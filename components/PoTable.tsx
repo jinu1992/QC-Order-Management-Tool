@@ -9,7 +9,6 @@ import {
     CubeIcon, 
     CheckCircleIcon, 
     UploadIcon, 
-    XCircleIcon, 
     InfoIcon, 
     CalendarIcon, 
     PaperclipIcon, 
@@ -94,6 +93,8 @@ const PoActionSection: React.FC<ActionSectionProps> = ({
 
     const isPushing = pushingToEasyEcom[po.id];
     const hasSelection = selectedItems.length > 0;
+    const btnBaseClass = "flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl transition-all shadow-sm active:scale-95";
+    const btnStateClass = hasSelection ? "bg-partners-green hover:bg-green-700 shadow-green-200" : "bg-gray-300 cursor-not-allowed grayscale";
     
     return (
         <div className="flex flex-col items-end gap-2">
@@ -105,12 +106,78 @@ const PoActionSection: React.FC<ActionSectionProps> = ({
             <button 
                 onClick={() => onPushToEE(po)} 
                 disabled={!hasSelection || isPushing} 
-                className={`flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl transition-all shadow-sm active:scale-95 ${hasSelection ? 'bg-partners-green hover:bg-green-700 shadow-green-200' : 'bg-gray-300 cursor-not-allowed grayscale'}`}
+                className={`${btnBaseClass} ${btnStateClass}`}
             >
                 <UploadIcon className={`h-4 w-4 ${isPushing ? 'animate-bounce' : ''}`} />
                 {isPushing ? 'Processing...' : `Push ${hasSelection ? selectedItems.length : ''} Items`}
             </button>
         </div>
+    );
+};
+
+interface PoItemRowProps {
+    item: POItem;
+    poId: string;
+    isChecked: boolean;
+    onToggle: (poId: string, articleCode: string) => void;
+    poStatus: POStatus;
+}
+
+const PoItemRow: React.FC<PoItemRowProps> = ({ item, poId, isChecked, onToggle, poStatus }) => {
+    const isMismatch = item.priceCheckStatus === 'Mismatch';
+    const isPushed = !!item.eeOrderRefId;
+    const isFullyFulfillable = (item.fulfillableQty ?? 0) >= item.qty;
+    const isPartiallyFulfillable = !isFullyFulfillable && (item.fulfillableQty ?? 0) > 0;
+    const isOutOfStock = (item.fulfillableQty ?? 0) === 0;
+    const unitPriceIncTax = ((item.unitCost || 0) * 1.05).toFixed(2);
+
+    const rowBgClass = isPushed ? 'bg-gray-50/50' : !isFullyFulfillable ? 'bg-orange-50/20' : 'hover:bg-gray-50/30';
+    
+    return (
+        <tr className={rowBgClass}>
+            <td className="py-4 text-center">
+                {isPushed ? (
+                    <CheckCircleIcon className="h-5 w-5 text-green-500 mx-auto" />
+                ) : (
+                    <input 
+                        type="checkbox" 
+                        className="h-3.5 w-3.5 rounded border-gray-300 text-partners-green focus:ring-partners-green cursor-pointer" 
+                        checked={isChecked} 
+                        onChange={() => onToggle(poId, item.articleCode)} 
+                        disabled={!isFullyFulfillable || poStatus === POStatus.Cancelled}
+                    />
+                )}
+            </td>
+            <td className="py-4 px-3">
+                <div className="flex flex-col">
+                    <p className={`font-bold ${isPushed ? 'text-gray-400' : 'text-gray-800'}`}>{item.itemName}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-[10px] text-gray-400 truncate max-w-[150px] font-mono">{item.masterSku || item.articleCode}</p>
+                        {!isPushed && isPartiallyFulfillable && <span className="text-[8px] font-bold bg-amber-100 text-amber-600 px-1 rounded uppercase">Partial Stock</span>}
+                        {!isPushed && isOutOfStock && <span className="text-[8px] font-bold bg-red-100 text-red-600 px-1 rounded uppercase">Stock Out</span>}
+                    </div>
+                </div>
+            </td>
+            <td className={`py-4 text-right font-medium ${isPushed ? 'text-gray-400' : 'text-gray-700'}`}>{item.qty}</td>
+            <td className={`py-4 text-right font-bold ${isPushed ? 'text-gray-400' : isFullyFulfillable ? 'text-green-600' : isPartiallyFulfillable ? 'text-amber-600' : 'text-red-600'}`}>{item.fulfillableQty ?? '0'}</td>
+            <td className="py-4 px-3 text-center">
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${isMismatch ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
+                    {item.priceCheckStatus || 'OK'}
+                </span>
+            </td>
+            <td className={`py-4 text-right font-bold ${isPushed ? 'text-gray-400' : 'text-blue-600'}`}>₹{unitPriceIncTax}</td>
+            <td className="py-4 text-center">
+                {isPushed ? (
+                    <span className="text-[9px] font-bold text-green-700 bg-green-100/50 px-2 py-0.5 rounded border border-green-200 uppercase">Pushed</span>
+                ) : poStatus === POStatus.Cancelled ? (
+                    <span className="text-[9px] font-bold text-gray-500 uppercase">Cancelled</span>
+                ) : !isFullyFulfillable ? (
+                    <span className="text-[9px] font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded border border-orange-200 uppercase">{isOutOfStock ? 'Shortage' : 'Partial'}</span>
+                ) : (
+                    <span className="text-gray-300 text-[10px] font-medium">-</span>
+                )}
+            </td>
+        </tr>
     );
 };
 
@@ -314,138 +381,129 @@ const PoTable: React.FC<PoTableProps> = ({
                         {processedOrders.length === 0 ? (
                             <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic">No purchase orders found matching your criteria.</td></tr>
                         ) : (
-                        processedOrders.map((po) => {
-                            const isExpanded = expandedRowId === po.id;
-                            const poSelectedItems = selectedPoItems[po.id] || [];
-                            const items = po.items || [];
-                            const selectableItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) >= i.qty);
-                            const poStatus = getCalculatedStatus(po);
-                            const amountIncTax = po.amount * 1.05;
-                            
-                            // Determine primary action
-                            let actionLabel = 'View Details';
-                            let actionColor = 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100';
-                            let onActionClick = () => toggleRowExpansion(po.id);
+                            processedOrders.map((po) => {
+                                const isExpanded = expandedRowId === po.id;
+                                const poSelectedItems = selectedPoItems[po.id] || [];
+                                const items = po.items || [];
+                                const selectableItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) >= i.qty);
+                                const poStatus = getCalculatedStatus(po);
+                                const amountIncTax = po.amount * 1.05;
+                                const amountFormatted = amountIncTax.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                                
+                                // Determine primary action
+                                let actionLabel = 'View Details';
+                                let actionColor = 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100';
+                                let onActionClick = () => toggleRowExpansion(po.id);
 
-                            if (poStatus === POStatus.Cancelled) {
-                                actionLabel = 'Cancelled';
-                                actionColor = 'bg-gray-100 text-gray-400 border-gray-200';
-                                onActionClick = () => {};
-                            } else if (poStatus === POStatus.Pushed) {
-                                actionLabel = 'Track in Sales';
-                                actionColor = 'bg-partners-blue text-white hover:bg-blue-700';
-                                onActionClick = () => addNotification('Navigate to Sales Orders to track fulfillment.', 'info');
-                            } else if (!po.eeCustomerId) {
-                                actionLabel = 'Sync Zoho';
-                                actionColor = 'bg-indigo-600 text-white hover:bg-indigo-700';
-                                onActionClick = () => handleSyncZohoToEE(po);
-                            } else if (poStatus === POStatus.NewPO || poStatus === POStatus.PartiallyProcessed) {
-                                actionLabel = 'Push to EE';
-                                actionColor = 'bg-partners-green text-white hover:bg-green-700';
-                                onActionClick = () => toggleRowExpansion(po.id);
-                            }
+                                if (poStatus === POStatus.Cancelled) {
+                                    actionLabel = 'Cancelled';
+                                    actionColor = 'bg-gray-100 text-gray-400 border-gray-200';
+                                    onActionClick = () => {};
+                                } else if (poStatus === POStatus.Pushed) {
+                                    actionLabel = 'Track in Sales';
+                                    actionColor = 'bg-partners-blue text-white hover:bg-blue-700';
+                                    onActionClick = () => addNotification('Navigate to Sales Orders to track fulfillment.', 'info');
+                                } else if (!po.eeCustomerId) {
+                                    actionLabel = 'Sync Zoho';
+                                    actionColor = 'bg-indigo-600 text-white hover:bg-indigo-700';
+                                    onActionClick = () => handleSyncZohoToEE(po);
+                                } else if (poStatus === POStatus.NewPO || poStatus === POStatus.PartiallyProcessed) {
+                                    actionLabel = 'Push to EE';
+                                    actionColor = 'bg-partners-green text-white hover:bg-green-700';
+                                    onActionClick = () => toggleRowExpansion(po.id);
+                                }
 
-                            return (
-                                <Fragment key={po.id}>
-                                    <tr className={`hover:bg-gray-50/80 cursor-pointer transition-colors ${isExpanded ? 'bg-partners-light-green/30' : 'bg-white'}`} onClick={() => toggleRowExpansion(po.id)}>
-                                        <td className="p-4 text-center sticky left-0 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
-                                            <div className="text-gray-400 hover:text-partners-green transition-colors">
-                                                {isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 font-bold text-partners-green whitespace-nowrap sticky left-12 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">{po.poNumber}</td>
-                                        <td className="px-6 py-4"><StatusBadge status={poStatus} /></td>
-                                        <td className="px-6 py-4 font-medium text-gray-700">{po.channel}</td>
-                                        <td className="px-6 py-4 text-gray-500">{po.storeCode}</td>
-                                        <td className="px-6 py-4 font-bold text-gray-900">{po.qty} / ₹{amountIncTax.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-gray-400">{po.orderDate}</td>
-                                        <td className="px-6 py-4 text-center sticky right-0 z-10 bg-inherit border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)]" onClick={(e) => e.stopPropagation()}>
-                                            <div className="flex items-center justify-center gap-2">
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); onActionClick(); }}
-                                                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap ${actionColor}`}
-                                                >
-                                                    {actionLabel}
-                                                </button>
-                                                <button className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-100 rounded-full transition-colors"><DotsVerticalIcon className="h-4 w-4" /></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {isExpanded && (
-                                        <tr className="bg-gray-50/50">
-                                            <td colSpan={8} className="px-4 py-8 sm:px-12">
-                                                <div className="bg-white border border-partners-border rounded-xl p-6 space-y-6 shadow-sm ring-1 ring-black/5">
-                                                    <div className="pb-6 border-b border-gray-100">
-                                                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><CalendarIcon className="h-4 w-4 text-blue-500" /> Fulfillment Ref</h4>
-                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
-                                                            <div><p className="text-[10px] uppercase font-bold text-gray-400">PO Ref</p><p className="text-xs font-bold text-partners-green truncate">{po.poNumber}</p></div>
-                                                            <div><p className="text-[10px] uppercase font-bold text-gray-400">PO Date</p><p className="text-xs font-bold text-gray-700">{po.orderDate || 'N/A'}</p></div>
-                                                            <div><p className="text-[10px] uppercase font-bold text-gray-400">EasyEcom Cust ID</p><p className={`text-xs font-bold ${po.eeCustomerId ? 'text-blue-600' : 'text-red-500 italic'}`}>{po.eeCustomerId || 'Not Mapped'}</p></div>
-                                                            <div><p className="text-[10px] uppercase font-bold text-gray-400">Expiry Date</p><p className="text-xs font-bold text-red-600">{po.poExpiryDate || 'N/A'}</p></div>
-                                                            <div><p className="text-[10px] uppercase font-bold text-gray-400">PO PDF</p>{po.poPdfUrl ? <a href={po.poPdfUrl} target="_blank" rel="noopener noreferrer" className="text-partners-green hover:underline flex items-center gap-1 text-xs font-bold mt-0.5"><PaperclipIcon className="h-3 w-3" /> View PO PDF</a> : <p className="text-xs text-gray-300 font-bold italic mt-0.5">Not Uploaded</p>}</div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex justify-between items-center border-b border-gray-100 pb-4">
-                                                        <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2"><CubeIcon className="h-4 w-4 text-partners-green" /> Item List & Stock Status</h4>
-                                                        <div className="flex items-center gap-3">
-                                                             <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-1 rounded-md border border-green-100">{selectableItems.length} Ready to Push</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="overflow-x-auto border border-gray-100 rounded-lg">
-                                                        <table className="w-full text-xs text-left">
-                                                            <thead className="bg-gray-50 text-gray-500 uppercase tracking-tight">
-                                                                <tr>
-                                                                    <th className="py-3 w-8 text-center"><input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-partners-green focus:ring-partners-green cursor-pointer disabled:opacity-30" checked={selectableItems.length > 0 && poSelectedItems.length === selectableItems.length} onChange={() => handleSelectAllItems(po)} disabled={selectableItems.length === 0 || poStatus === POStatus.Cancelled}/></th>
-                                                                    <th className="py-3 px-3">Item Name / SKU</th>
-                                                                    <th className="py-3 text-right">PO Qty</th>
-                                                                    <th className="py-3 text-right">Fulfillable</th>
-                                                                    <th className="py-3 px-3 text-center">Price Check</th>
-                                                                    <th className="py-3 text-right">Unit Cost (Inc. 5% Tax)</th>
-                                                                    <th className="py-3 text-center">Status</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className="divide-y divide-gray-100">
-                                                                {items.map((item, idx) => {
-                                                                    const isMismatch = item.priceCheckStatus === 'Mismatch';
-                                                                    const isPushed = !!item.eeOrderRefId;
-                                                                    const isFullyFulfillable = (item.fulfillableQty ?? 0) >= item.qty;
-                                                                    const isPartiallyFulfillable = !isFullyFulfillable && (item.fulfillableQty ?? 0) > 0;
-                                                                    const isOutOfStock = (item.fulfillableQty ?? 0) === 0;
-                                                                    const unitPriceIncTax = ((item.unitCost || 0) * 1.05).toFixed(2);
-                                                                    const isChecked = poSelectedItems.includes(item.articleCode);
-                                                                    
-                                                                    return (
-                                                                        <tr key={`${po.id}-item-${idx}`} className={`${isPushed ? 'bg-gray-50/50' : 'hover:bg-gray-50/30'} ${!isPushed && !isFullyFulfillable ? 'bg-orange-50/20' : ''}`}>
-                                                                            <td className="py-4 text-center">{isPushed ? <CheckCircleIcon className="h-5 w-5 text-green-500 mx-auto" /> : <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-partners-green focus:ring-partners-green cursor-pointer" checked={isChecked} onChange={() => handleItemSelect(po.id, item.articleCode)} disabled={!isFullyFulfillable || poStatus === POStatus.Cancelled}/>}</td>
-                                                                            <td className="py-4 px-3"><div className="flex flex-col"><p className={`font-bold ${isPushed ? 'text-gray-400' : 'text-gray-800'}`}>{item.itemName}</p><div className="flex items-center gap-2 mt-0.5"><p className="text-[10px] text-gray-400 truncate max-w-[150px] font-mono">{item.masterSku || item.articleCode}</p>{!isPushed && isPartiallyFulfillable && <span className="text-[8px] font-bold bg-amber-100 text-amber-600 px-1 rounded uppercase">Partial Stock</span>}{!isPushed && isOutOfStock && <span className="text-[8px] font-bold bg-red-100 text-red-600 px-1 rounded uppercase">Stock Out</span>}</div></div></td>
-                                                                            <td className={`py-4 text-right font-medium ${isPushed ? 'text-gray-400' : 'text-gray-700'}`}>{item.qty}</td>
-                                                                            <td className={`py-4 text-right font-bold ${isPushed ? 'text-gray-400' : isFullyFulfillable ? 'text-green-600' : isPartiallyFulfillable ? 'text-amber-600' : 'text-red-600'}`}>{item.fulfillableQty ?? '0'}</td>
-                                                                            <td className="py-4 px-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${isMismatch ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>{item.priceCheckStatus || 'OK'}</span></td>
-                                                                            <td className={`py-4 text-right font-bold ${isPushed ? 'text-gray-400' : 'text-blue-600'}`}>₹{unitPriceIncTax}</td>
-                                                                            <td className="py-4 text-center">{isPushed ? <span className="text-[9px] font-bold text-green-700 bg-green-100/50 px-2 py-0.5 rounded border border-green-200 uppercase">Pushed</span> : poStatus === POStatus.Cancelled ? <span className="text-[9px] font-bold text-gray-500 uppercase">Cancelled</span> : !isFullyFulfillable ? <span className="text-[9px] font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded border border-orange-200 uppercase">{isOutOfStock ? 'Shortage' : 'Partial'}</span> : <span className="text-gray-300 text-[10px] font-medium">-</span>}</td>
-                                                                        </tr>
-                                                                    );
-                                                                })}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                    <div className="flex justify-end pt-4 border-t border-gray-100 items-center gap-4">
-                                                        <PoActionSection 
-                                                            po={po}
-                                                            isSyncingZoho={isSyncingZoho}
-                                                            pushingToEasyEcom={pushingToEasyEcom}
-                                                            selectedItems={poSelectedItems}
-                                                            onSyncZoho={handleSyncZohoToEE}
-                                                            onPushToEE={handlePushToEasyEcomAction}
-                                                        />
-                                                    </div>
+                                return (
+                                    <Fragment key={po.id}>
+                                        <tr className={`hover:bg-gray-50/80 cursor-pointer transition-colors ${isExpanded ? 'bg-partners-light-green/30' : 'bg-white'}`} onClick={() => toggleRowExpansion(po.id)}>
+                                            <td className="p-4 text-center sticky left-0 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
+                                                <div className="text-gray-400 hover:text-partners-green transition-colors">
+                                                    {isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 font-bold text-partners-green whitespace-nowrap sticky left-12 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">{po.poNumber}</td>
+                                            <td className="px-6 py-4"><StatusBadge status={poStatus} /></td>
+                                            <td className="px-6 py-4 font-medium text-gray-700">{po.channel}</td>
+                                            <td className="px-6 py-4 text-gray-500">{po.storeCode}</td>
+                                            <td className="px-6 py-4 font-bold text-gray-900">{po.qty} / ₹{amountFormatted}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-gray-400">{po.orderDate}</td>
+                                            <td className="px-6 py-4 text-center sticky right-0 z-10 bg-inherit border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)]" onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); onActionClick(); }}
+                                                        className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap ${actionColor}`}
+                                                    >
+                                                        {actionLabel}
+                                                    </button>
+                                                    <button className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-100 rounded-full transition-colors"><DotsVerticalIcon className="h-4 w-4" /></button>
                                                 </div>
                                             </td>
                                         </tr>
-                                    )}
-                                </Fragment>
-                            );
-                        })}
+                                        {isExpanded && (
+                                            <tr className="bg-gray-50/50">
+                                                <td colSpan={8} className="px-4 py-8 sm:px-12">
+                                                    <div className="bg-white border border-partners-border rounded-xl p-6 space-y-6 shadow-sm ring-1 ring-black/5">
+                                                        <div className="pb-6 border-b border-gray-100">
+                                                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><CalendarIcon className="h-4 w-4 text-blue-500" /> Fulfillment Ref</h4>
+                                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                                                                <div><p className="text-[10px] uppercase font-bold text-gray-400">PO Ref</p><p className="text-xs font-bold text-partners-green truncate">{po.poNumber}</p></div>
+                                                                <div><p className="text-[10px] uppercase font-bold text-gray-400">PO Date</p><p className="text-xs font-bold text-gray-700">{po.orderDate || 'N/A'}</p></div>
+                                                                <div><p className="text-[10px] uppercase font-bold text-gray-400">EasyEcom Cust ID</p><p className={`text-xs font-bold ${po.eeCustomerId ? 'text-blue-600' : 'text-red-500 italic'}`}>{po.eeCustomerId || 'Not Mapped'}</p></div>
+                                                                <div><p className="text-[10px] uppercase font-bold text-gray-400">Expiry Date</p><p className="text-xs font-bold text-red-600">{po.poExpiryDate || 'N/A'}</p></div>
+                                                                <div><p className="text-[10px] uppercase font-bold text-gray-400">PO PDF</p>{po.poPdfUrl ? <a href={po.poPdfUrl} target="_blank" rel="noopener noreferrer" className="text-partners-green hover:underline flex items-center gap-1 text-xs font-bold mt-0.5"><PaperclipIcon className="h-3 w-3" /> View PO PDF</a> : <p className="text-xs text-gray-300 font-bold italic mt-0.5">Not Uploaded</p>}</div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex justify-between items-center border-b border-gray-100 pb-4">
+                                                            <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2"><CubeIcon className="h-4 w-4 text-partners-green" /> Item List & Stock Status</h4>
+                                                            <div className="flex items-center gap-3">
+                                                                 <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-1 rounded-md border border-green-100">{selectableItems.length} Ready to Push</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                                                            <table className="w-full text-xs text-left">
+                                                                <thead className="bg-gray-50 text-gray-500 uppercase tracking-tight">
+                                                                    <tr>
+                                                                        <th className="py-3 w-8 text-center"><input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-partners-green focus:ring-partners-green cursor-pointer disabled:opacity-30" checked={selectableItems.length > 0 && poSelectedItems.length === selectableItems.length} onChange={() => handleSelectAllItems(po)} disabled={selectableItems.length === 0 || poStatus === POStatus.Cancelled}/></th>
+                                                                        <th className="py-3 px-3">Item Name / SKU</th>
+                                                                        <th className="py-3 text-right">PO Qty</th>
+                                                                        <th className="py-3 text-right">Fulfillable</th>
+                                                                        <th className="py-3 px-3 text-center">Price Check</th>
+                                                                        <th className="py-3 text-right">Unit Cost (Inc. 5% Tax)</th>
+                                                                        <th className="py-3 text-center">Status</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y divide-gray-100">
+                                                                    {items.map((item, idx) => (
+                                                                        <PoItemRow 
+                                                                            key={`${po.id}-item-${idx}`}
+                                                                            item={item}
+                                                                            poId={po.id}
+                                                                            isChecked={poSelectedItems.includes(item.articleCode)}
+                                                                            onToggle={handleItemSelect}
+                                                                            poStatus={poStatus}
+                                                                        />
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                        <div className="flex justify-end pt-4 border-t border-gray-100 items-center gap-4">
+                                                            <PoActionSection 
+                                                                po={po}
+                                                                isSyncingZoho={isSyncingZoho}
+                                                                pushingToEasyEcom={pushingToEasyEcom}
+                                                                selectedItems={poSelectedItems}
+                                                                onSyncZoho={handleSyncZohoToEE}
+                                                                onPushToEE={handlePushToEasyEcomAction}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </Fragment>
+                                );
+                            })
+                        )}
                     </tbody>
                 </table>
             </div>
