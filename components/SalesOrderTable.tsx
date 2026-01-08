@@ -163,14 +163,12 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         purchaseOrders.forEach(po => {
             (po.items || []).forEach(item => {
                 const rawRef = item.eeReferenceCode;
-                // Rule: Sales Order grouping must ONLY use EE Reference Code
                 if (!rawRef || String(rawRef).trim() === "") return;
                 const refCode = String(rawRef).trim();
                 
                 const effectiveQty = (item.itemQuantity !== undefined && item.itemQuantity !== 0) ? item.itemQuantity : item.qty;
                 const effectiveLineAmount = effectiveQty * (item.unitCost || 0);
                 
-                // Fetch Box Count and tracking details from the item level (row level from sheet)
                 const eeBoxCount = Number(item.eeBoxCount || 0);
                 const carrier = item.carrier || po.carrier;
                 const awb = item.awb || po.awb;
@@ -219,7 +217,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         edd: item.edd || po.edd, 
                         latestStatus: item.latestStatus || po.latestStatus, 
                         latestStatusDate: item.latestStatusDate || po.latestStatusDate, 
-                        currentLocation: po.currentLocation, 
+                        currentLocation: item.currentLocation || po.currentLocation, 
                         deliveredDate: item.deliveredDate || po.deliveredDate, 
                         rtoStatus: item.rtoStatus || po.rtoStatus, 
                         rtoAwb: item.rtoAwb || po.rtoAwb, 
@@ -248,10 +246,8 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     if (!groups[refCode].invoicePdfUrl) groups[refCode].invoicePdfUrl = item.invoicePdfUrl;
                     if (!groups[refCode].poPdfUrl) groups[refCode].poPdfUrl = po.poPdfUrl;
                     
-                    // Box count strategy: Use Max to catch non-zero values from any row of the fulfillment group
                     groups[refCode].boxCount = Math.max(groups[refCode].boxCount, eeBoxCount);
                     
-                    // Tracking aggregation: Pick data from any row that has it populated
                     if (!groups[refCode].awb && awb) groups[refCode].awb = awb;
                     if (!groups[refCode].carrier && carrier) groups[refCode].carrier = carrier;
                     if (!groups[refCode].trackingStatus && trackingStatus) groups[refCode].trackingStatus = trackingStatus;

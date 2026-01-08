@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, Fragment, useMemo, useRef } from 'react';
 import { POStatus, type PurchaseOrder, POItem, InventoryItem } from '../types';
 import StatusBadge from './StatusBadge';
@@ -39,7 +38,6 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
     const [pushingToEasyEcom, setPushingToEasyEcom] = useState<{ [key: string]: boolean }>({});
     const [isSyncingZoho, setIsSyncingZoho] = useState<string | null>(null);
 
-    // Filtering states
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
     const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
     const filterMenuRef = useRef<HTMLDivElement>(null);
@@ -66,7 +64,6 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
     const processedOrders = useMemo(() => {
         let orders = [...purchaseOrders];
 
-        // 1. Tab Filter
         if (activeFilter !== 'All POs') {
             orders = orders.filter(po => {
                 const status = getCalculatedStatus(po);
@@ -78,16 +75,13 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
             });
         }
 
-        // 2. Header Search/Filters
         Object.keys(columnFilters).forEach(key => {
             const val = columnFilters[key].toLowerCase();
             if (!val) return;
             orders = orders.filter(po => String((po as any)[key] || '').toLowerCase().includes(val));
         });
 
-        // 3. Date Sort (Newest First)
         orders.sort((a, b) => parseDate(b.orderDate) - parseDate(a.orderDate));
-
         return orders;
     }, [activeFilter, purchaseOrders, columnFilters]);
 
@@ -186,7 +180,7 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
                             <th className="px-6 py-4 sticky left-12 bg-gray-50 z-30 border-r border-gray-100 group min-w-[150px]">
                                 <div className="flex items-center gap-2">
                                     PO Number
-                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'poNumber' ? null : 'poNumber')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.poNumber ? 'text-partners-green' : ''}`}><SearchIcon className="h-3 w-3"/></button>
+                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'poNumber' ? null : 'poNumber')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.poNumber ? 'text-partners-green' : 'text-gray-400'}`}><SearchIcon className="h-3 w-3"/></button>
                                 </div>
                                 {activeFilterColumn === 'poNumber' && (
                                     <div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case">
@@ -198,7 +192,7 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
                             <th className="px-6 py-4 min-w-[140px]">
                                 <div className="flex items-center gap-2">
                                     Channel
-                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'channel' ? null : 'channel')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.channel ? 'text-partners-green' : ''}`}><FilterIcon className="h-3 w-3"/></button>
+                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'channel' ? null : 'channel')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.channel ? 'text-partners-green' : 'text-gray-400'}`}><FilterIcon className="h-3 w-3"/></button>
                                 </div>
                                 {activeFilterColumn === 'channel' && (
                                     <div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case">
@@ -212,7 +206,7 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
                             <th className="px-6 py-4 min-w-[120px]">
                                 <div className="flex items-center gap-2">
                                     Store
-                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'storeCode' ? null : 'storeCode')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.storeCode ? 'text-partners-green' : ''}`}><SearchIcon className="h-3 w-3"/></button>
+                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'storeCode' ? null : 'storeCode')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.storeCode ? 'text-partners-green' : 'text-gray-400'}`}><SearchIcon className="h-3 w-3"/></button>
                                 </div>
                                 {activeFilterColumn === 'storeCode' && (
                                     <div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case">
@@ -233,7 +227,6 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
                             const isExpanded = expandedRowId === po.id;
                             const poSelectedItems = selectedPoItems[po.id] || [];
                             const items = po.items || [];
-                            const pushedItems = items.filter(i => !!i.eeOrderRefId);
                             const selectableItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) >= i.qty);
                             const stockShortageItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) < i.qty);
                             const allSelectableSelected = selectableItems.length > 0 && poSelectedItems.length === selectableItems.length;
@@ -325,7 +318,41 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
                                                         </table>
                                                     </div>
                                                     <div className="flex justify-end pt-4 border-t border-gray-100 items-center gap-4">
-                                                         {poStatus === POStatus.Cancelled ? <p className="text-sm font-bold text-red-600 bg-red-50 px-4 py-2 rounded-lg border border-red-100">This PO has been cancelled and cannot be processed.</p> : !po.eeCustomerId ? <div className="flex flex-col items-end gap-1"><span className="text-[10px] font-bold text-blue-600 flex items-center gap-1 uppercase tracking-tighter"><InfoIcon className="h-3 w-3"/> Step 1: Mapping Required</span><button onClick={() => handleSyncZohoToEE(po)} disabled={!!isSyncingZoho} className="flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl transition-all shadow-sm active:scale-95 bg-blue-600 hover:bg-blue-700 shadow-blue-100">{isSyncingZoho === po.id ? <RefreshIcon className="h-4 w-4 animate-spin"/> : <BuildingIcon className="h-4 w-4" />}{isSyncingZoho === po.id ? 'Syncing...' : 'Sync Zoho to EasyEcom'}</button></div> : <div className="flex flex-col items-end gap-2">{selectableItems.length === 0 && stockShortageItems.length > 0 && <p className="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-1 rounded-md border border-orange-100">Push disabled for items with partial/zero stock.</p>}<button onClick={() => handlePushToEasyEcom(po)} disabled={poSelectedItems.length === 0 || pushingToEasyEcom[po.id]} className={`flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl transition-all shadow-sm active:scale-95 ${poSelectedItems.length > 0 ? 'bg-partners-green hover:bg-green-700 shadow-green-200' : 'bg-gray-300 cursor-not-allowed grayscale'}`}><UploadIcon className={`h-4 w-4 ${pushingToEasyEcom[po.id] ? 'animate-bounce' : ''}`} />{pushingToEasyEcom[po.id] ? 'Processing...' : `Push ${poSelectedItems.length > 0 ? poSelectedItems.length : ''} Items`}</button></div>}
+                                                         {poStatus === POStatus.Cancelled ? (
+                                                            <p className="text-sm font-bold text-red-600 bg-red-50 px-4 py-2 rounded-lg border border-red-100">
+                                                                This PO has been cancelled and cannot be processed.
+                                                            </p>
+                                                         ) : !po.eeCustomerId ? (
+                                                            <div className="flex flex-col items-end gap-1">
+                                                                <span className="text-[10px] font-bold text-blue-600 flex items-center gap-1 uppercase tracking-tighter">
+                                                                    <InfoIcon className="h-3 w-3"/> Step 1: Mapping Required
+                                                                </span>
+                                                                <button 
+                                                                    onClick={() => handleSyncZohoToEE(po)} 
+                                                                    disabled={!!isSyncingZoho} 
+                                                                    className="flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl transition-all shadow-sm active:scale-95 bg-blue-600 hover:bg-blue-700 shadow-blue-100"
+                                                                >
+                                                                    {isSyncingZoho === po.id ? <RefreshIcon className="h-4 w-4 animate-spin"/> : <BuildingIcon className="h-4 w-4" />}
+                                                                    {isSyncingZoho === po.id ? 'Syncing...' : 'Sync Zoho to EasyEcom'}
+                                                                </button>
+                                                            </div>
+                                                         ) : (
+                                                            <div className="flex flex-col items-end gap-2">
+                                                                {selectableItems.length === 0 && stockShortageItems.length > 0 && (
+                                                                    <p className="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-1 rounded-md border border-orange-100">
+                                                                        Push disabled for items with partial/zero stock.
+                                                                    </p>
+                                                                )}
+                                                                <button 
+                                                                    onClick={() => handlePushToEasyEcom(po)} 
+                                                                    disabled={poSelectedItems.length === 0 || pushingToEasyEcom[po.id]} 
+                                                                    className={`flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl transition-all shadow-sm active:scale-95 ${poSelectedItems.length > 0 ? 'bg-partners-green hover:bg-green-700 shadow-green-200' : 'bg-gray-300 cursor-not-allowed grayscale'}`}
+                                                                >
+                                                                    <UploadIcon className={`h-4 w-4 ${pushingToEasyEcom[po.id] ? 'animate-bounce' : ''}`} />
+                                                                    {pushingToEasyEcom[po.id] ? 'Processing...' : `Push ${poSelectedItems.length > 0 ? poSelectedItems.length : ''} Items`}
+                                                                </button>
+                                                            </div>
+                                                         )}
                                                     </div>
                                                 </div>
                                             </td>
