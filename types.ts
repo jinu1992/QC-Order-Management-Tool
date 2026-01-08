@@ -1,3 +1,4 @@
+
 export type ViewType = 'Dashboard' | 'Purchase Orders' | 'Uploads' | 'File Uploader' | 'POC Verification' | 'Appointments' | 'Sales Orders' | 'GRN / POD' | 'Reports' | 'Finance' | 'Inventory' | 'Admin';
 
 export enum POStatus {
@@ -52,6 +53,10 @@ export interface POItem {
     trackingStatus?: string;
     edd?: string;
     latestStatus?: string;
+    // Fix: Added latestStatusDate to POItem
+    latestStatusDate?: string;
+    // Fix: Added currentLocation to POItem for consistency
+    currentLocation?: string;
     deliveredDate?: string;
     rtoStatus?: string;
     rtoAwb?: string;

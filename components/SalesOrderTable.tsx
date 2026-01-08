@@ -163,7 +163,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         purchaseOrders.forEach(po => {
             (po.items || []).forEach(item => {
                 const rawRef = item.eeReferenceCode;
-                // CRITICAL RULE: Sales Order grouping must ONLY use EE Reference Code
+                // Rule: Sales Order grouping must ONLY use EE Reference Code
                 if (!rawRef || String(rawRef).trim() === "") return;
                 const refCode = String(rawRef).trim();
                 
@@ -218,7 +218,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         trackingStatus: trackingStatus, 
                         edd: item.edd || po.edd, 
                         latestStatus: item.latestStatus || po.latestStatus, 
-                        latestStatusDate: po.latestStatusDate, 
+                        latestStatusDate: item.latestStatusDate || po.latestStatusDate, 
                         currentLocation: po.currentLocation, 
                         deliveredDate: item.deliveredDate || po.deliveredDate, 
                         rtoStatus: item.rtoStatus || po.rtoStatus, 
@@ -251,10 +251,12 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     // Box count strategy: Use Max to catch non-zero values from any row of the fulfillment group
                     groups[refCode].boxCount = Math.max(groups[refCode].boxCount, eeBoxCount);
                     
-                    // For tracking details: Pick whichever row has data
+                    // Tracking aggregation: Pick data from any row that has it populated
                     if (!groups[refCode].awb && awb) groups[refCode].awb = awb;
                     if (!groups[refCode].carrier && carrier) groups[refCode].carrier = carrier;
                     if (!groups[refCode].trackingStatus && trackingStatus) groups[refCode].trackingStatus = trackingStatus;
+                    if (!groups[refCode].edd && item.edd) groups[refCode].edd = item.edd;
+                    if (!groups[refCode].deliveredDate && item.deliveredDate) groups[refCode].deliveredDate = item.deliveredDate;
                 }
                 groups[refCode].items.push(item);
                 groups[refCode].qty += effectiveQty;
@@ -372,7 +374,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                             <th className="px-6 py-3 text-blue-600 sticky left-12 bg-gray-50 z-30 border-r border-gray-100 min-w-[150px]">
                                 <div className="flex items-center gap-2">
                                     SO ID (EE Ref)
-                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'id' ? null : 'id')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.id ? 'text-partners-green' : ''}`}><SearchIcon className="h-3 w-3"/></button>
+                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'id' ? null : 'id')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.id ? 'text-partners-green' : 'text-gray-400'}`}><SearchIcon className="h-3 w-3"/></button>
                                 </div>
                                 {activeFilterColumn === 'id' && (
                                     <div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case">
@@ -384,7 +386,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                             <th className="px-6 py-3 min-w-[140px]">
                                 <div className="flex items-center gap-2">
                                     Channel
-                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'channel' ? null : 'channel')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.channel ? 'text-partners-green' : ''}`}><FilterIcon className="h-3 w-3"/></button>
+                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'channel' ? null : 'channel')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.channel ? 'text-partners-green' : 'text-gray-400'}`}><FilterIcon className="h-3 w-3"/></button>
                                 </div>
                                 {activeFilterColumn === 'channel' && (
                                     <div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case">

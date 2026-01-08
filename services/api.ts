@@ -1,3 +1,4 @@
+
 import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePocMapping, User, UploadMetadata } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbwBDSNnN_xKlZc4cTwwKthd7-Nq8IE83csNdNHODP55EnVEz-gfWzcvzYdxGeNbJSPzZQ/exec'; 
@@ -211,8 +212,16 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
         const itemAmount = qty * unitCost;
         const articleCode = String(row['Item Code'] || row['Article Code'] || '').trim();
         
-        // Strict mapping for Box Count using 'Box Data' header as priority
-        const eeRefBoxCount = Number(row['Box Data'] || 0);
+        // Robust case-insensitive lookup for 'Box Data' header
+        const getColumnValueCaseInsensitive = (rowObj: any, target: string) => {
+            const normalizedTarget = target.toLowerCase().trim();
+            for (const key in rowObj) {
+                if (key.toLowerCase().trim() === normalizedTarget) return rowObj[key];
+            }
+            return undefined;
+        };
+
+        const eeRefBoxCount = Number(getColumnValueCaseInsensitive(row, 'Box Data') || 0);
 
         const item: POItem = {
             articleCode,
@@ -242,12 +251,16 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
             invoiceUrl: row['Invoice Url'],
             invoicePdfUrl: row['Invoice PDF Url'],
             eeBoxCount: eeRefBoxCount,
-            // Capture tracking details from row for item-level (EE Ref specific) grouping
+            // Tracking details attached to row for EE Reference Code specific lookup
             carrier: row['Carrier'],
             awb: row['AWB'],
             trackingStatus: row['Tracking Status'],
             edd: formatSheetDate(row['EDD']),
             latestStatus: row['Latest Status'],
+            // Fix: Populated latestStatusDate for POItem
+            latestStatusDate: formatSheetDate(row['Latest Status Date']),
+            // Fix: Populated currentLocation for POItem
+            currentLocation: row['Current Location'],
             deliveredDate: formatSheetDate(row['Delivered Date']),
             rtoStatus: row['RTO Status'],
             rtoAwb: row['RTO AWB']
@@ -285,12 +298,14 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
                 eeBatchCreatedAt: formatSheetDate(row['EE_batch_created_at']),
                 eeInvoiceDate: formatSheetDate(row['EE_invoice_date']),
                 eeManifestDate: formatSheetDate(row['EE_manifest_date']),
-                // Tracking info at PO level for legacy views
+                // Tracking info at PO level
                 carrier: row['Carrier'],
                 awb: row['AWB'],
                 trackingStatus: row['Tracking Status'],
                 edd: formatSheetDate(row['EDD']),
                 latestStatus: row['Latest Status'],
+                latestStatusDate: formatSheetDate(row['Latest Status Date']),
+                currentLocation: row['Current Location'],
                 deliveredDate: formatSheetDate(row['Delivered Date']),
                 rtoStatus: row['RTO Status'],
                 rtoAwb: row['RTO AWB']
