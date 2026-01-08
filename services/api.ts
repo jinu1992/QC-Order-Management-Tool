@@ -344,6 +344,14 @@ export const requestZohoSync = async (contactId: string) => {
     return await response.json();
 };
 
+export const cancelPurchaseOrder = async (poNumber: string) => {
+    const response = await postToScript({ 
+        action: 'cancelPO', 
+        poNumber 
+    });
+    return await response.json();
+};
+
 export const pushToEasyEcom = async (po: PurchaseOrder, selectedArticleCodes: string[]) => {
     const itemsToSend = (po.items || []).filter(item => selectedArticleCodes.includes(item.articleCode))
         .map(item => ({

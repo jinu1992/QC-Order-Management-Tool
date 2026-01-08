@@ -155,11 +155,21 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     const filterMenuRef = useRef<HTMLDivElement>(null);
 
     const tabs = [
-        { name: 'All POs' }, { name: 'In-Transit' }, { name: 'GRN Pending' }, { name: 'GRN Updated' }, { name: 'RTO' }, { name: 'Closed' },
+        { id: 'All POs', name: 'All POs' },
+        { id: 'Confirmed', name: 'Confirmed' },
+        { id: 'Batch Created', name: 'Batch Created' },
+        { id: 'Invoiced', name: 'Invoiced' },
+        { id: 'Label Generated', name: 'Label Generated' },
+        { id: 'Box Data Upload Pending', name: 'Box Data Pending' },
+        { id: 'Shipped', name: 'Shipped' },
+        { id: 'RTO', name: 'RTO' },
+        { id: 'Closed', name: 'Closed' },
     ];
 
-    const salesOrders = useMemo(() => {
+    const { salesOrders, salesTabCounts } = useMemo(() => {
         const groups: Record<string, GroupedSalesOrder> = {};
+        const counts: Record<string, number> = { 'All POs': 0, 'Confirmed': 0, 'Batch Created': 0, 'Invoiced': 0, 'Label Generated': 0, 'Box Data Upload Pending': 0, 'Shipped': 0, 'RTO': 0, 'Closed': 0 };
+
         purchaseOrders.forEach(po => {
             (po.items || []).forEach(item => {
                 const rawRef = item.eeReferenceCode;
@@ -191,14 +201,16 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     displayStatus = 'Invoiced';
                 } else if (batchDate) {
                     displayStatus = 'Batch Created';
-                } else if (eeStatus.toLowerCase() === 'confirmed') {
+                } else if (eeStatus.toLowerCase() === 'confirmed' || eeStatus.toLowerCase() === 'open') {
                     displayStatus = 'Confirmed';
+                } else if (eeStatus.toLowerCase() === 'closed') {
+                    displayStatus = 'Closed';
                 }
 
                 if (!groups[refCode]) {
                     groups[refCode] = { 
                         id: refCode, 
-                        poReference: String(po.poNumber || ''), 
+                        poReference: String(po.id || ''), 
                         status: displayStatus, 
                         originalEeStatus: eeStatus, 
                         channel: po.channel, 
@@ -232,7 +244,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         boxCount: eeBoxCount
                     };
                 } else {
-                    const curPo = String(po.poNumber || '');
+                    const curPo = String(po.id || '');
                     if (!groups[refCode].poReference.includes(curPo)) groups[refCode].poReference += `, ${curPo}`;
                     const statusRank = (s: string) => { 
                         if (s === 'Shipped') return 7; 
@@ -253,7 +265,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     if (!groups[refCode].invoiceTotal) groups[refCode].invoiceTotal = item.invoiceTotal;
                     if (!groups[refCode].invoiceUrl) groups[refCode].invoiceUrl = item.invoiceUrl;
                     if (!groups[refCode].invoicePdfUrl) groups[refCode].invoicePdfUrl = item.invoicePdfUrl;
-                    if (!groups[refCode].poPdfUrl) groups[refCode].poPdfUrl = po.poPdfUrl;
                     
                     groups[refCode].boxCount = Math.max(groups[refCode].boxCount, eeBoxCount);
                     
@@ -269,26 +280,29 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             });
         });
 
-        let results = Object.values(groups);
+        const results = Object.values(groups);
+        results.forEach(so => {
+            counts['All POs']++;
+            if (counts[so.status] !== undefined) counts[so.status]++;
+            if (so.rtoStatus) counts['RTO']++;
+        });
+
+        let filteredResults = results;
         if (activeFilter !== 'All POs') {
-             results = results.filter(so => {
-                 const status = so.status.toLowerCase();
-                 if (activeFilter === 'In-Transit') return status.includes('transit') || status.includes('shipped') || status.includes('manifest') || status.includes('batch') || status.includes('invoiced') || status.includes('label') || status.includes('box data');
-                 if (activeFilter === 'Closed') return status.includes('closed') || status.includes('delivered');
-                 if (activeFilter === 'RTO') return status.includes('rto');
-                 return true;
+             filteredResults = results.filter(so => {
+                 if (activeFilter === 'RTO') return !!so.rtoStatus;
+                 return so.status === activeFilter;
              });
         }
 
         Object.keys(columnFilters).forEach(key => {
             const val = columnFilters[key].toLowerCase();
             if (!val) return;
-            results = results.filter(so => String((so as any)[key] || '').toLowerCase().includes(val));
+            filteredResults = filteredResults.filter(so => String((so as any)[key] || '').toLowerCase().includes(val));
         });
 
-        // Sorting by newest Effective Date (which is EE Order Date if available)
-        results.sort((a, b) => parseDateString(b.orderDate) - parseDateString(a.orderDate));
-        return results;
+        filteredResults.sort((a, b) => parseDateString(b.orderDate) - parseDateString(a.orderDate));
+        return { salesOrders: filteredResults, salesTabCounts: counts };
     }, [purchaseOrders, activeFilter, columnFilters]);
 
     useEffect(() => {
@@ -354,9 +368,9 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
     const getPrimaryAction = (so: GroupedSalesOrder) => {
         const isExecuting = isCreatingInvoice === so.id || isPushingNimbus === so.id;
-        // Logic refinement: Only allow Invoice creation if the order has been batched.
-        // Orders in 'Confirmed', 'Open', or 'Processing' status should not show this option yet.
-        if (so.status === 'Batch Created') {
+        
+        // Strictly Gate: Only Batch Created orders can generate invoices
+        if (!so.invoiceNumber && so.status === 'Batch Created') {
             return { 
                 label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', 
                 color: 'bg-purple-600 text-white hover:bg-purple-700', 
@@ -364,6 +378,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 disabled: isExecuting
             };
         }
+        
         if (so.status === 'Invoiced' && !so.awb && so.boxCount > 0) {
             return { 
                 label: isPushingNimbus === so.id ? 'Shipping...' : 'Ship Nimbus', 
@@ -372,12 +387,15 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 disabled: isExecuting
             };
         }
+        
         if (so.status === 'Label Generated') {
-            return { label: 'Track Dispatch', color: 'bg-amber-50 text-white bg-amber-500 hover:bg-amber-600', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
+            return { label: 'Track Dispatch', color: 'bg-amber-500 text-white hover:bg-amber-600', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
         }
+        
         if (so.awb) {
             return { label: 'Track Order', color: 'bg-partners-green text-white hover:bg-green-700', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
         }
+        
         return { label: 'Details', color: 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
     };
 
@@ -387,10 +405,16 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
                 <div className="flex flex-wrap items-center gap-2">
                     {tabs.map(tab => (
-                        <button key={tab.name} onClick={() => setActiveFilter(tab.name)} className={`px-3 py-1.5 text-sm font-semibold rounded-full border transition-colors ${activeFilter === tab.name ? 'bg-partners-green text-white border-partners-green' : 'bg-white text-gray-600 border-partners-border hover:bg-gray-50'}`}>{tab.name}</button>
+                        <button 
+                            key={tab.id} 
+                            onClick={() => setActiveFilter(tab.id)} 
+                            className={`px-3 py-1.5 text-sm font-semibold rounded-full border transition-all ${activeFilter === tab.id ? 'bg-partners-green text-white border-partners-green shadow-sm' : 'bg-white text-gray-600 border-partners-border hover:bg-gray-50'}`}
+                        >
+                            {tab.name} <span className="ml-1 text-[10px] opacity-70">({salesTabCounts[tab.id] || 0})</span>
+                        </button>
                     ))}
                 </div>
-                <button onClick={onSync} disabled={isSyncing} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 transition-all"><CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-bounce' : ''}`} /> Sync Data</button>
+                <button onClick={onSync} disabled={isSyncing} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 transition-all"><CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} /> Sync Data</button>
             </div>
 
             <div className="mt-6 overflow-x-auto border border-gray-100 rounded-xl shadow-inner max-h-[70vh]">
@@ -405,7 +429,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 </div>
                                 {activeFilterColumn === 'id' && (
                                     <div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case">
-                                        <input type="text" autoFocus placeholder="Search ID..." className="w-full px-3 py-1.5 text-xs border rounded-md" value={columnFilters.id || ''} onChange={(e) => setColumnFilters({...columnFilters, id: e.target.value})} />
+                                        <input type="text" autoFocus placeholder="Search ID..." className="w-full px-3 py-1.5 text-xs border rounded-md focus:ring-1 focus:ring-partners-green" value={columnFilters.id || ''} onChange={(e) => setColumnFilters({...columnFilters, id: e.target.value})} />
                                     </div>
                                 )}
                             </th>
@@ -430,9 +454,9 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                             <th className="px-6 py-3 text-center sticky right-0 bg-gray-50 z-30 border-l border-gray-100 min-w-[200px]">Action</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-gray-100/50">
                         {salesOrders.length === 0 ? (
-                            <tr><td colSpan={8} className="px-6 py-10 text-center text-gray-500 italic">No sales orders found with an EasyEcom reference code.</td></tr>
+                            <tr><td colSpan={8} className="px-6 py-10 text-center text-gray-500 italic">No sales orders found matching current criteria.</td></tr>
                         ) : (
                             salesOrders.map((so) => {
                                 const isExpanded = expandedRowId === so.id;
@@ -443,7 +467,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 return (
                                     <Fragment key={so.id}>
                                         <tr className={`border-b hover:bg-gray-50 cursor-pointer ${isExpanded ? 'bg-gray-50' : 'bg-white'}`} onClick={() => setExpandedRowId(isExpanded ? null : so.id)}>
-                                            <td className="p-4 text-center sticky left-0 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]"><div className="text-gray-400 hover:text-partners-green">{isExpanded ? <ChevronDownIcon /> : <ChevronRightIcon />}</div></td>
+                                            <td className="p-4 text-center sticky left-0 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]"><div className="text-gray-400 hover:text-partners-green">{isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}</div></td>
                                             <td className="px-6 py-4 font-bold text-blue-600 whitespace-nowrap sticky left-12 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">{so.id}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
@@ -504,10 +528,10 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                                 <button 
                                                                                     onClick={() => handleCreateZohoInvoiceAction(so.id)} 
                                                                                     disabled={!!isCreatingInvoice} 
-                                                                                    className="mt-4 px-4 py-2 bg-purple-600 text-white text-[11px] font-bold rounded-lg shadow-sm hover:bg-purple-700 flex items-center gap-2"
+                                                                                    className="mt-4 px-4 py-2 bg-purple-600 text-white text-[11px] font-bold rounded-lg shadow-sm hover:bg-purple-700 flex items-center gap-2 transition-all active:scale-95"
                                                                                 >
                                                                                     {isCreatingInvoice === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <PlusIcon className="h-3 w-3" />}
-                                                                                    Create Zoho Invoice
+                                                                                    {isCreatingInvoice === so.id ? 'Creating...' : 'Create Zoho Invoice'}
                                                                                 </button>
                                                                             ) : (
                                                                                 <p className="mt-3 text-[10px] text-gray-400 italic bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
@@ -524,7 +548,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                             </div>
                                                         </div>
                                                         <div className="pt-6 border-t border-gray-100">
-                                                            <div className="flex justify-between items-center mb-4"><h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><GlobeIcon className="h-4 w-4 text-blue-600" /> Logistics & Shipment Status</h4>{(so.invoiceNumber && !so.awb && so.boxCount > 0) && <button onClick={() => handlePushToNimbusAction(so.id)} disabled={!!isPushingNimbus} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700">{isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}Ship with Nimbus Post</button>}</div>
+                                                            <div className="flex justify-between items-center mb-4"><h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><GlobeIcon className="h-4 w-4 text-blue-600" /> Logistics & Shipment Status</h4>{(so.invoiceNumber && !so.awb && so.boxCount > 0) && <button onClick={() => handlePushToNimbusAction(so.id)} disabled={!!isPushingNimbus} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95">{isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}{isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post'}</button>}</div>
                                                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><div className={`p-4 rounded-xl border transition-all ${so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{so.boxCount || 0}</p></div></div></div>
                                                             {so.awb ? <>
                                                                 <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 col-span-1 md:col-span-1"><div className="flex flex-col h-full justify-between"><div><p className="text-[10px] font-bold text-blue-400 uppercase">Carrier & AWB</p><p className="text-sm font-bold text-gray-900 truncate">{so.carrier || 'Pending'}</p><p className="text-xs font-mono text-blue-600 font-bold tracking-wider">{so.awb}</p></div><span className={`mt-2 w-fit px-2 py-0.5 rounded text-[10px] font-bold border ${so.trackingStatus?.toLowerCase().includes('deliv') ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{so.trackingStatus || 'In-Transit'}</span></div></div>

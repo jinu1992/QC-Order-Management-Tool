@@ -16,9 +16,10 @@ import {
     BuildingIcon, 
     RefreshIcon, 
     SearchIcon, 
-    FilterIcon 
+    FilterIcon,
+    TrashIcon
 } from './icons/Icons';
-import { pushToEasyEcom, requestZohoSync } from '../services/api';
+import { pushToEasyEcom, requestZohoSync, cancelPurchaseOrder } from '../services/api';
 
 // --- Utilities ---
 
@@ -38,12 +39,20 @@ const parseDate = (dateStr: string): number => {
 };
 
 const getCalculatedStatus = (po: PurchaseOrder): POStatus => {
+    const rawStatus = String(po.status || '').trim().toLowerCase();
+    
+    // 1. If explicitly cancelled in DB, it MUST be Cancelled
+    if (rawStatus === 'cancelled') return POStatus.Cancelled;
+    if (rawStatus === 'below threshold') return POStatus.BelowThreshold;
+    
+    // 2. Check item-level pushing status
     const items = po.items || [];
-    if (po.status === POStatus.Cancelled) return POStatus.Cancelled;
     const pushedCount = items.filter(i => !!i.eeOrderRefId).length;
     if (items.length > 0 && pushedCount === items.length) return POStatus.Pushed;
     if (pushedCount > 0) return POStatus.PartiallyProcessed;
-    return POStatus.NewPO;
+    
+    // 3. Default to New
+    return POStatus.NewPO; 
 };
 
 // --- Sub-Components ---
@@ -60,11 +69,13 @@ interface OrderRowProps {
     isSyncingZoho: boolean;
     onSyncZoho: () => void;
     onTrackNotify: () => void;
+    onCancel: () => void;
+    isCancelling: boolean;
 }
 
 const OrderRow: React.FC<OrderRowProps> = ({ 
     po, isExpanded, onToggle, isSelected, onItemToggle, onSelectAll, 
-    isPushing, onPush, isSyncingZoho, onSyncZoho, onTrackNotify 
+    isPushing, onPush, isSyncingZoho, onSyncZoho, onTrackNotify, onCancel, isCancelling 
 }) => {
     const poStatus = getCalculatedStatus(po);
     const amountIncTax = po.amount * 1.05;
@@ -72,6 +83,20 @@ const OrderRow: React.FC<OrderRowProps> = ({
     const selectableItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) >= i.qty);
     const selectedCount = items.filter(i => isSelected(i.articleCode)).length;
     const effectiveDate = po.eeOrderDate || po.orderDate;
+    const rawStatus = String(po.status || '').trim().toLowerCase();
+
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsMenuOpen(false);
+            }
+        };
+        if (isMenuOpen) document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isMenuOpen]);
 
     // Primary Action Logic
     let actionLabel = 'View Details';
@@ -100,11 +125,14 @@ const OrderRow: React.FC<OrderRowProps> = ({
         isDisabled = isPushing;
     }
 
+    // Cancellation is allowed for New POs or those marked Below Threshold, as long as not pushed.
+    const canCancel = (poStatus === POStatus.NewPO || poStatus === POStatus.BelowThreshold || rawStatus === 'open') && selectedCount === 0;
+
     return (
         <Fragment>
             <tr className={`hover:bg-gray-50/80 cursor-pointer transition-colors ${isExpanded ? 'bg-partners-light-green/30' : 'bg-white'}`} onClick={onToggle}>
                 <td className="p-4 text-center sticky left-0 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
-                    <div className="text-gray-400 hover:text-partners-green transition-colors">
+                    <div className="text-gray-400">
                         {isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
                     </div>
                 </td>
@@ -114,16 +142,46 @@ const OrderRow: React.FC<OrderRowProps> = ({
                 <td className="px-6 py-4 text-gray-500">{po.storeCode}</td>
                 <td className="px-6 py-4 font-bold text-gray-900">{po.qty} / ₹{amountIncTax.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-gray-400">{effectiveDate}</td>
-                <td className="px-6 py-4 text-center sticky right-0 z-10 bg-inherit border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)]" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-center gap-2">
+                <td className="px-6 py-4 text-center sticky right-0 z-30 bg-white border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)]" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-3 min-w-[160px]">
                         <button 
                             onClick={(e) => { e.stopPropagation(); onActionClick(); }}
-                            disabled={isDisabled}
-                            className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap ${actionColor} ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            disabled={isDisabled || isCancelling}
+                            className={`flex-1 min-w-[100px] px-3 py-2 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap overflow-hidden text-ellipsis ${actionColor} ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                             {actionLabel}
                         </button>
-                        <button className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-100 rounded-full transition-colors"><DotsVerticalIcon className="h-4 w-4" /></button>
+                        <div className="relative" ref={menuRef}>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }}
+                                className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-full transition-colors"
+                            >
+                                <DotsVerticalIcon className="h-5 w-5" />
+                            </button>
+                            
+                            {isMenuOpen && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-gray-100 z-[100] overflow-hidden ring-1 ring-black/5">
+                                    <div className="py-1">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onToggle(); }}
+                                            className="w-full text-left px-4 py-2.5 text-[11px] font-bold text-gray-600 hover:bg-gray-50 flex items-center gap-2"
+                                        >
+                                            <InfoIcon className="h-4 w-4" /> View Details
+                                        </button>
+                                        
+                                        {canCancel && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onCancel(); }}
+                                                disabled={isCancelling}
+                                                className="w-full text-left px-4 py-2.5 text-[11px] font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-gray-50 disabled:opacity-50"
+                                            >
+                                                <TrashIcon className="h-4 w-4" /> {isCancelling ? 'Cancelling...' : 'Cancel PO'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </td>
             </tr>
@@ -195,9 +253,6 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                                             <p className={`font-bold ${isPushed ? 'text-gray-400' : 'text-gray-800'}`}>{item.itemName}</p>
                                                             <div className="flex items-center gap-2 mt-0.5">
                                                                 <p className="text-[10px] text-gray-400 truncate max-w-[150px] font-mono">{item.masterSku || item.articleCode}</p>
-                                                                {!isPushed && !isFullyFulfillable && (
-                                                                    <span className="text-[8px] font-bold bg-amber-100 text-amber-600 px-1 rounded uppercase">Shortage</span>
-                                                                )}
                                                             </div>
                                                         </div>
                                                     </td>
@@ -212,6 +267,8 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                                     <td className="py-4 text-center">
                                                         {isPushed ? (
                                                             <span className="text-[9px] font-bold text-green-700 bg-green-100/50 px-2 py-0.5 rounded border border-green-200 uppercase">Pushed</span>
+                                                        ) : poStatus === POStatus.Cancelled ? (
+                                                            <span className="text-[9px] font-bold text-red-700 uppercase">Cancelled</span>
                                                         ) : (
                                                             <span className="text-gray-300 text-[10px] font-medium">-</span>
                                                         )}
@@ -272,6 +329,7 @@ const PoTable: React.FC<PoTableProps> = ({
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
     const [selectedPoItems, setSelectedPoItems] = useState<{ [key: string]: string[] }>({});
     const [pushingToEasyEcom, setPushingToEasyEcom] = useState<{ [key: string]: boolean }>({});
+    const [cancellingPoId, setCancellingPoId] = useState<string | null>(null);
     const [syncingZohoId, setSyncingZohoId] = useState<string | null>(null);
 
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
@@ -370,6 +428,25 @@ const PoTable: React.FC<PoTableProps> = ({
         finally { setSyncingZohoId(null); }
     };
 
+    const handleCancelPoAction = async (po: PurchaseOrder) => {
+        if (!window.confirm(`Are you sure you want to cancel PO ${po.poNumber}? This will mark it as Cancelled in the database.`)) return;
+        setCancellingPoId(po.id);
+        try {
+            const res = await cancelPurchaseOrder(po.poNumber);
+            if (res.status === 'success') {
+                addNotification(`PO ${po.poNumber} cancelled successfully.`, 'success');
+                addLog('Cancel PO', `Marked PO ${po.poNumber} as Cancelled`);
+                onSync(); // Refresh and tab counts will update
+            } else {
+                addNotification('Cancel Failed: ' + res.message, 'error');
+            }
+        } catch (e) {
+            addNotification('Network error during cancellation.', 'error');
+        } finally {
+            setCancellingPoId(null);
+        }
+    };
+
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
@@ -401,7 +478,7 @@ const PoTable: React.FC<PoTableProps> = ({
                                 </div>
                                 {activeFilterColumn === 'poNumber' && (
                                     <div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case">
-                                        <input type="text" autoFocus placeholder="Search PO..." className="w-full px-3 py-1.5 text-xs border rounded-md" value={columnFilters.poNumber || ''} onChange={(e) => setColumnFilters({...columnFilters, poNumber: e.target.value})} />
+                                        <input type="text" autoFocus placeholder="Search PO..." className="w-full px-3 py-1.5 text-xs border rounded-md focus:ring-1 focus:ring-partners-green" value={columnFilters.poNumber || ''} onChange={(e) => setColumnFilters({...columnFilters, poNumber: e.target.value})} />
                                     </div>
                                 )}
                             </th>
@@ -441,9 +518,12 @@ const PoTable: React.FC<PoTableProps> = ({
                                     isSyncingZoho={syncingZohoId === po.id}
                                     onSyncZoho={() => handleSyncZohoAction(po)}
                                     onTrackNotify={() => addNotification('Navigate to Sales Orders to track fulfillment.', 'info')}
+                                    onCancel={() => handleCancelPoAction(po)}
+                                    isCancelling={cancellingPoId === po.id}
                                 />
                             ))
                         )}
+                        <tr className="h-24"><td colSpan={8}></td></tr>
                     </tbody>
                 </table>
             </div>
