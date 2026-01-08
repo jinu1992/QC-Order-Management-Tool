@@ -1,4 +1,3 @@
-
 export type ViewType = 'Dashboard' | 'Purchase Orders' | 'Uploads' | 'File Uploader' | 'POC Verification' | 'Appointments' | 'Sales Orders' | 'GRN / POD' | 'Reports' | 'Finance' | 'Inventory' | 'Admin';
 
 export enum POStatus {
@@ -47,6 +46,15 @@ export interface POItem {
     invoiceUrl?: string;
     invoicePdfUrl?: string;
     eeBoxCount?: number;
+    // Fulfillment specific tracking
+    carrier?: string;
+    awb?: string;
+    trackingStatus?: string;
+    edd?: string;
+    latestStatus?: string;
+    deliveredDate?: string;
+    rtoStatus?: string;
+    rtoAwb?: string;
 }
 
 export interface PurchaseOrder {
@@ -97,7 +105,6 @@ export interface PurchaseOrder {
     eeBatchCreatedAt?: string;
     eeInvoiceDate?: string;
     eeManifestDate?: string;
-    // New Shipment Tracking Fields
     bookedDate?: string;
     trackingStatus?: string;
     edd?: string;

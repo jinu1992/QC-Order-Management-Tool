@@ -163,17 +163,21 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         purchaseOrders.forEach(po => {
             (po.items || []).forEach(item => {
                 const rawRef = item.eeReferenceCode;
+                // CRITICAL RULE: Sales Order grouping must ONLY use EE Reference Code
                 if (!rawRef || String(rawRef).trim() === "") return;
                 const refCode = String(rawRef).trim();
                 
                 const effectiveQty = (item.itemQuantity !== undefined && item.itemQuantity !== 0) ? item.itemQuantity : item.qty;
                 const effectiveLineAmount = effectiveQty * (item.unitCost || 0);
                 
-                const eeBoxCount = item.eeBoxCount || 0;
+                // Fetch Box Count and tracking details from the item level (row level from sheet)
+                const eeBoxCount = Number(item.eeBoxCount || 0);
+                const carrier = item.carrier || po.carrier;
+                const awb = item.awb || po.awb;
+                const trackingStatus = item.trackingStatus || po.trackingStatus;
 
                 const batchDate = item.eeBatchCreatedAt || po.eeBatchCreatedAt;
                 const invNum = item.invoiceNumber;
-                const awb = po.awb;
                 const maniDate = item.eeManifestDate || po.eeManifestDate;
                 const eeStatus = (item.eeOrderStatus || po.eeOrderStatus || 'Processing').trim();
                 
@@ -208,17 +212,17 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         invoiceTotal: item.invoiceTotal, 
                         invoiceUrl: item.invoiceUrl, 
                         invoicePdfUrl: item.invoicePdfUrl, 
-                        carrier: po.carrier, 
-                        awb: po.awb, 
+                        carrier: carrier, 
+                        awb: awb, 
                         bookedDate: po.bookedDate, 
-                        trackingStatus: po.trackingStatus, 
-                        edd: po.edd, 
-                        latestStatus: po.latestStatus, 
+                        trackingStatus: trackingStatus, 
+                        edd: item.edd || po.edd, 
+                        latestStatus: item.latestStatus || po.latestStatus, 
                         latestStatusDate: po.latestStatusDate, 
                         currentLocation: po.currentLocation, 
-                        deliveredDate: po.deliveredDate, 
-                        rtoStatus: po.rtoStatus, 
-                        rtoAwb: po.rtoAwb, 
+                        deliveredDate: item.deliveredDate || po.deliveredDate, 
+                        rtoStatus: item.rtoStatus || po.rtoStatus, 
+                        rtoAwb: item.rtoAwb || po.rtoAwb, 
                         boxCount: eeBoxCount
                     };
                 } else {
@@ -243,7 +247,14 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     if (!groups[refCode].invoiceUrl) groups[refCode].invoiceUrl = item.invoiceUrl;
                     if (!groups[refCode].invoicePdfUrl) groups[refCode].invoicePdfUrl = item.invoicePdfUrl;
                     if (!groups[refCode].poPdfUrl) groups[refCode].poPdfUrl = po.poPdfUrl;
+                    
+                    // Box count strategy: Use Max to catch non-zero values from any row of the fulfillment group
                     groups[refCode].boxCount = Math.max(groups[refCode].boxCount, eeBoxCount);
+                    
+                    // For tracking details: Pick whichever row has data
+                    if (!groups[refCode].awb && awb) groups[refCode].awb = awb;
+                    if (!groups[refCode].carrier && carrier) groups[refCode].carrier = carrier;
+                    if (!groups[refCode].trackingStatus && trackingStatus) groups[refCode].trackingStatus = trackingStatus;
                 }
                 groups[refCode].items.push(item);
                 groups[refCode].qty += effectiveQty;
