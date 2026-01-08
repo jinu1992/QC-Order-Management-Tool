@@ -153,6 +153,62 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
         return { label: 'View Details', color: 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100', onClick: () => toggleRowExpansion(po.id) };
     };
 
+    // Helper to render the action buttons section at the bottom of expanded row
+    const renderActionSection = (po: PurchaseOrder) => {
+        const poStatus = getCalculatedStatus(po);
+        const currentSelected = selectedPoItems[po.id] || [];
+        const items = po.items || [];
+        const selectableItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) >= i.qty);
+        const stockShortageItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) < i.qty);
+
+        if (poStatus === POStatus.Cancelled) {
+            return (
+                <p className="text-sm font-bold text-red-600 bg-red-50 px-4 py-2 rounded-lg border border-red-100">
+                    This PO has been cancelled and cannot be processed.
+                </p>
+            );
+        }
+
+        if (!po.eeCustomerId) {
+            return (
+                <div className="flex flex-col items-end gap-1">
+                    <span className="text-[10px] font-bold text-blue-600 flex items-center gap-1 uppercase tracking-tighter">
+                        <InfoIcon className="h-3 w-3"/> Step 1: Mapping Required
+                    </span>
+                    <button 
+                        onClick={() => handleSyncZohoToEE(po)} 
+                        disabled={!!isSyncingZoho} 
+                        className="flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl transition-all shadow-sm active:scale-95 bg-blue-600 hover:bg-blue-700 shadow-blue-100"
+                    >
+                        {isSyncingZoho === po.id ? <RefreshIcon className="h-4 w-4 animate-spin"/> : <BuildingIcon className="h-4 w-4" />}
+                        {isSyncingZoho === po.id ? 'Syncing...' : 'Sync Zoho to EasyEcom'}
+                    </button>
+                </div>
+            );
+        }
+
+        const isPushing = pushingToEasyEcom[po.id];
+        const pushBtnText = isPushing ? 'Processing...' : `Push ${currentSelected.length > 0 ? currentSelected.length : ''} Items`;
+        
+        return (
+            <div className="flex flex-col items-end gap-2">
+                {selectableItems.length === 0 && stockShortageItems.length > 0 && (
+                    <p className="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-1 rounded-md border border-orange-100">
+                        Push disabled for items with partial/zero stock.
+                    </p>
+                )}
+                <button 
+                    onClick={() => handlePushToEasyEcom(po)} 
+                    disabled={currentSelected.length === 0 || isPushing} 
+                    className={`flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl transition-all shadow-sm active:scale-95 ${currentSelected.length > 0 ? 'bg-partners-green hover:bg-green-700 shadow-green-200' : 'bg-gray-300 cursor-not-allowed grayscale'}`}
+                >
+                    <UploadIcon className={`h-4 w-4 ${isPushing ? 'animate-bounce' : ''}`} />
+                    {pushBtnText}
+                </button>
+            </div>
+        );
+    };
+
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
@@ -228,7 +284,6 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
                             const poSelectedItems = selectedPoItems[po.id] || [];
                             const items = po.items || [];
                             const selectableItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) >= i.qty);
-                            const stockShortageItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) < i.qty);
                             const allSelectableSelected = selectableItems.length > 0 && poSelectedItems.length === selectableItems.length;
                             const poStatus = getCalculatedStatus(po);
                             const amountIncTax = po.amount * 1.05;
@@ -278,7 +333,6 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
                                                         <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2"><CubeIcon className="h-4 w-4 text-partners-green" /> Item List & Stock Status</h4>
                                                         <div className="flex items-center gap-3">
                                                              <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-1 rounded-md border border-green-100">{selectableItems.length} Ready to Push</span>
-                                                             {stockShortageItems.length > 0 && <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded-md border border-orange-100">{stockShortageItems.length} Short/Partial Stock</span>}
                                                         </div>
                                                     </div>
                                                     <div className="overflow-x-auto border border-gray-100 rounded-lg">
@@ -318,41 +372,7 @@ const PoTable: React.FC<PoTableProps> = ({ activeFilter, setActiveFilter, purcha
                                                         </table>
                                                     </div>
                                                     <div className="flex justify-end pt-4 border-t border-gray-100 items-center gap-4">
-                                                         {poStatus === POStatus.Cancelled ? (
-                                                            <p className="text-sm font-bold text-red-600 bg-red-50 px-4 py-2 rounded-lg border border-red-100">
-                                                                This PO has been cancelled and cannot be processed.
-                                                            </p>
-                                                         ) : !po.eeCustomerId ? (
-                                                            <div className="flex flex-col items-end gap-1">
-                                                                <span className="text-[10px] font-bold text-blue-600 flex items-center gap-1 uppercase tracking-tighter">
-                                                                    <InfoIcon className="h-3 w-3"/> Step 1: Mapping Required
-                                                                </span>
-                                                                <button 
-                                                                    onClick={() => handleSyncZohoToEE(po)} 
-                                                                    disabled={!!isSyncingZoho} 
-                                                                    className="flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl transition-all shadow-sm active:scale-95 bg-blue-600 hover:bg-blue-700 shadow-blue-100"
-                                                                >
-                                                                    {isSyncingZoho === po.id ? <RefreshIcon className="h-4 w-4 animate-spin"/> : <BuildingIcon className="h-4 w-4" />}
-                                                                    {isSyncingZoho === po.id ? 'Syncing...' : 'Sync Zoho to EasyEcom'}
-                                                                </button>
-                                                            </div>
-                                                         ) : (
-                                                            <div className="flex flex-col items-end gap-2">
-                                                                {selectableItems.length === 0 && stockShortageItems.length > 0 && (
-                                                                    <p className="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-1 rounded-md border border-orange-100">
-                                                                        Push disabled for items with partial/zero stock.
-                                                                    </p>
-                                                                )}
-                                                                <button 
-                                                                    onClick={() => handlePushToEasyEcom(po)} 
-                                                                    disabled={poSelectedItems.length === 0 || pushingToEasyEcom[po.id]} 
-                                                                    className={`flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl transition-all shadow-sm active:scale-95 ${poSelectedItems.length > 0 ? 'bg-partners-green hover:bg-green-700 shadow-green-200' : 'bg-gray-300 cursor-not-allowed grayscale'}`}
-                                                                >
-                                                                    <UploadIcon className={`h-4 w-4 ${pushingToEasyEcom[po.id] ? 'animate-bounce' : ''}`} />
-                                                                    {pushingToEasyEcom[po.id] ? 'Processing...' : `Push ${poSelectedItems.length > 0 ? poSelectedItems.length : ''} Items`}
-                                                                </button>
-                                                            </div>
-                                                         )}
+                                                        {renderActionSection(po)}
                                                     </div>
                                                 </div>
                                             </td>
