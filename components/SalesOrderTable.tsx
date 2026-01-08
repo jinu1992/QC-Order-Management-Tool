@@ -1,4 +1,3 @@
-
 import React, { useState, Fragment, useMemo, FC, useRef, useEffect } from 'react';
 import { type PurchaseOrder, type InventoryItem, POItem } from '../types';
 import { 
@@ -170,7 +169,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 const effectiveQty = (item.itemQuantity !== undefined && item.itemQuantity !== 0) ? item.itemQuantity : item.qty;
                 const effectiveLineAmount = effectiveQty * (item.unitCost || 0);
                 
-                // Box Count is fetched strictly against the EE Reference Code (fulfillment level)
                 const eeBoxCount = item.eeBoxCount || 0;
 
                 const batchDate = item.eeBatchCreatedAt || po.eeBatchCreatedAt;
@@ -245,7 +243,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     if (!groups[refCode].invoiceUrl) groups[refCode].invoiceUrl = item.invoiceUrl;
                     if (!groups[refCode].invoicePdfUrl) groups[refCode].invoicePdfUrl = item.invoicePdfUrl;
                     if (!groups[refCode].poPdfUrl) groups[refCode].poPdfUrl = po.poPdfUrl;
-                    // Box count is shared for the same fulfillment reference
                     groups[refCode].boxCount = Math.max(groups[refCode].boxCount, eeBoxCount);
                 }
                 groups[refCode].items.push(item);
