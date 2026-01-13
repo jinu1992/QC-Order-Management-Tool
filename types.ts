@@ -30,6 +30,7 @@ export interface POItem {
     priceCheckStatus?: string;
     eeOrderRefId?: string;
     eeReferenceCode?: string; 
+    eeOrderDate?: string;
     itemStatus?: string;
     itemQuantity?: number;
     cancelledQuantity?: number;
@@ -53,9 +54,7 @@ export interface POItem {
     trackingStatus?: string;
     edd?: string;
     latestStatus?: string;
-    // Fix: Added latestStatusDate to POItem
     latestStatusDate?: string;
-    // Fix: Added currentLocation to POItem for consistency
     currentLocation?: string;
     deliveredDate?: string;
     rtoStatus?: string;
@@ -176,5 +175,17 @@ export interface RolePermissions { [key: string]: ViewType[]; }
 export interface ActivityLog { id: string; user: string; action: string; details: string; timestamp: string; }
 export interface NotificationItem { id: string; message: string; timestamp: string; read: boolean; type: 'info' | 'success' | 'warning' | 'error'; }
 export interface InventoryItem { id: string; channel: string; articleCode: string; sku: string; ean: string; itemName: string; mrp: number; basicPrice: number; spIncTax: number; stock: number; }
-export interface ChannelConfig { id: string; channelName: string; status: 'Active' | 'Inactive'; sourceEmail: string; searchKeyword: string; minOrderThreshold: number; pocName: string; pocEmail: string; pocPhone: string; }
+export interface ChannelConfig { 
+  id: string; 
+  channelName: string; 
+  status: 'Active' | 'Inactive'; 
+  sourceEmail: string; 
+  searchKeyword: string; 
+  minOrderThreshold: number; 
+  pocName: string; 
+  pocEmail: string; 
+  pocPhone: string;
+  appointmentTo?: string; // New: Comma separated emails
+  appointmentCc?: string; // New: Comma separated emails
+}
 export type ReportTimeRange = '30_days' | 'last_month' | 'this_quarter' | 'ytd' | 'all';

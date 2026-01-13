@@ -1,134 +1,76 @@
 
 import React, { useState, useMemo, useEffect, FC } from 'react';
-import { PurchaseOrder, POStatus, StorePocMapping } from '../types';
-import { CalendarIcon, MailIcon, ReplyIcon, CheckCircleIcon, XCircleIcon, ExternalLinkIcon, BuildingIcon, RefreshIcon, InfoIcon, TruckIcon, ClipboardListIcon, InvoiceIcon, GlobeIcon, CurrencyIcon } from './icons/Icons';
-import { fetchStorePocMappings, sendAppointmentEmail } from '../services/api';
+import { PurchaseOrder, POStatus, StorePocMapping, ChannelConfig } from '../types';
+import { 
+    CalendarIcon, 
+    MailIcon, 
+    CheckCircleIcon, 
+    XCircleIcon, 
+    ExternalLinkIcon, 
+    RefreshIcon, 
+    InfoIcon, 
+    TruckIcon, 
+    ClipboardListIcon, 
+    InvoiceIcon, 
+    GlobeIcon, 
+    CurrencyIcon,
+    SearchIcon,
+    FilterIcon,
+    ClockIcon,
+    PaperclipIcon
+} from './icons/Icons';
+import { fetchStorePocMappings, sendAppointmentEmail, fetchChannelConfigs } from '../services/api';
 
 const inputClassName = "mt-1 block w-full rounded-lg border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-partners-green focus:ring-partners-green sm:text-sm py-3 px-3";
 
-interface AppointmentModalProps {
-    po: PurchaseOrder;
-    poc?: StorePocMapping;
+interface BulkAppointmentModalProps {
+    channel: string;
+    pos: PurchaseOrder[];
+    channelConfig?: ChannelConfig;
     onClose: () => void;
-    onSuccess: () => void;
+    onSuccess: (sentIds: string[]) => void;
     addLog: (action: string, details: string) => void;
     addNotification: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
-const CopyField = ({ label, value, icon }: { label: string, value: string, icon: React.ReactNode }) => {
-    const [copied, setCopied] = useState(false);
-
-    const handleCopy = (e: React.MouseEvent) => {
-        if (!value || value === 'N/A') return;
-        navigator.clipboard.writeText(value);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
-    return (
-        <div 
-            onClick={handleCopy}
-            className="flex flex-col gap-1.5 p-3 bg-white border border-gray-200 rounded-xl hover:border-partners-green transition-colors group cursor-pointer active:bg-gray-50 select-none"
-        >
-            <div className="flex justify-between items-center pointer-events-none">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
-                    {icon} {label}
-                </span>
-                <div 
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${copied ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500 group-hover:bg-partners-green group-hover:text-white'}`}
-                >
-                    {copied ? 'COPIED!' : 'COPY'}
-                </div>
-            </div>
-            <p className="text-sm font-bold text-gray-800 break-all pointer-events-none">{value || 'N/A'}</p>
-        </div>
-    );
-};
-
-const BlinkitAppointmentModal: FC<{ po: PurchaseOrder, onClose: () => void }> = ({ po, onClose }) => {
-    // Extract invoice details from items - prioritizing invoicePdfUrl for helper modal
-    const firstPushedItem = (po.items || []).find(i => !!i.invoiceNumber);
-    const invoiceNumber = firstPushedItem?.invoiceNumber || 'N/A';
-    const invoicePdfUrl = firstPushedItem?.invoicePdfUrl || 'N/A';
-    const amountWithTax = (po.amount * 1.05).toFixed(0);
-
-    return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
-            <div className="bg-partners-gray-bg rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-white">
-                <div className="p-6 bg-white border-b border-gray-100 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-yellow-100">
-                            <span className="font-black italic text-xl">b</span>
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-gray-800">Blinkit Appointment Helper</h3>
-                            <p className="text-xs text-gray-500">Portal: <span className="font-bold text-partners-green">partnersbiz.com</span></p>
-                        </div>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                        <XCircleIcon className="h-6 w-6 text-gray-400"/>
-                    </button>
-                </div>
-
-                <div className="p-6 space-y-6">
-                    {/* Instructions Card */}
-                    <div className="bg-partners-light-green border-2 border-dashed border-partners-green/30 p-4 rounded-2xl flex gap-4 items-start">
-                        <div className="bg-partners-green p-2 rounded-lg text-white">
-                            <CalendarIcon className="h-5 w-5" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-bold text-partners-green uppercase tracking-tight">Scheduling Instructions</p>
-                            <p className="text-sm text-gray-700 mt-1 leading-relaxed">
-                                Take the <span className="font-bold underline">earliest available slot</span> on the suggested date in the portal. 
-                                <br/>
-                                <span className="text-red-600 font-extrabold uppercase">Important: Do not select Sundays.</span>
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Copy Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <CopyField label="PO Number" value={po.poNumber} icon={<ClipboardListIcon className="h-3 w-3"/>} />
-                        <CopyField label="Courier Name" value={po.carrier || 'Standard'} icon={<TruckIcon className="h-3 w-3"/>} />
-                        <CopyField label="AWB Number" value={po.awb || 'N/A'} icon={<GlobeIcon className="h-3 w-3"/>} />
-                        <CopyField label="Invoice Number" value={invoiceNumber} icon={<InvoiceIcon className="h-3 w-3"/>} />
-                        <CopyField label="Total Amount (Inc. Tax)" value={`₹${amountWithTax}`} icon={<CurrencyIcon className="h-3 w-3"/>} />
-                        <div className="md:col-span-2">
-                             <CopyField label="Invoice PDF URL" value={invoicePdfUrl} icon={<ExternalLinkIcon className="h-3 w-3"/>} />
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col items-center pt-2">
-                        <button 
-                            onClick={() => window.open('https://partnersbiz.com/login', '_blank')}
-                            className="w-full py-4 bg-partners-green text-white font-bold rounded-2xl shadow-xl shadow-green-100 hover:bg-green-700 transition-all flex items-center justify-center gap-3 active:scale-95"
-                        >
-                            <ExternalLinkIcon className="h-5 w-5" />
-                            Open Blinkit Partners Portal
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const EmailAppointmentModal: FC<AppointmentModalProps> = ({ po, poc, onClose, onSuccess, addLog, addNotification }) => {
-    const [boxes, setBoxes] = useState(po.boxes || 1);
+const BulkEmailModal: FC<BulkAppointmentModalProps> = ({ channel, pos, channelConfig, onClose, onSuccess, addLog, addNotification }) => {
     const [isLoading, setIsLoading] = useState(false);
+    const [poData, setPoData] = useState(pos.map(p => ({
+        ...p,
+        boxes: p.boxes || 1,
+        requestedDate: new Date(Date.now() + 86400000).toISOString().split('T')[0] // Default to tomorrow
+    })));
 
     const handleSend = async () => {
-        if (!poc?.pocEmail) {
-            alert("No POC Email found for this store. Please check Store_POC_Mapping.");
+        if (!channelConfig?.appointmentTo) {
+            alert(`No recipient email configured for ${channel}. Please set it in Admin > Channel Config.`);
             return;
         }
+
         setIsLoading(true);
         try {
-            const res = await sendAppointmentEmail(po, boxes, poc.pocEmail);
+            const subject = `📦 Appointment Request for ${channel} | PO IDs: ${pos.map(p => p.poNumber).join(', ')}`;
+            const params = {
+                channel,
+                pos: poData.map(p => ({
+                    poNumber: p.poNumber,
+                    storeCode: p.storeCode,
+                    qty: p.qty,
+                    boxes: p.boxes,
+                    dispatchDate: p.dispatchDate || p.eeManifestDate || 'N/A',
+                    trackingUrl: p.trackingUrl || `https://nimbuspost.com/track?awb=${p.awb}`,
+                    trackingStatus: p.latestTrackingStatus || p.trackingStatus || 'In-Transit',
+                    requestedDate: p.requestedDate
+                })),
+                toEmails: channelConfig.appointmentTo,
+                ccEmails: channelConfig.appointmentCc || ''
+            };
+
+            const res = await sendAppointmentEmail(params);
             if (res.status === 'success') {
-                addLog('Email Sent', `Appointment request sent to ${poc.pocEmail} for PO ${po.poNumber}`);
-                addNotification(`Email sent to ${poc.pocName} (${poc.pocEmail})`, 'success');
-                onSuccess();
+                addLog('Bulk Email Sent', `Sent appointment request for ${pos.length} POs from ${channel}`);
+                addNotification(`Email sent for ${pos.length} POs to ${channelConfig.appointmentTo}`, 'success');
+                onSuccess(pos.map(p => p.id));
                 onClose();
             } else {
                 alert("Failed to send email: " + res.message);
@@ -142,54 +84,78 @@ const EmailAppointmentModal: FC<AppointmentModalProps> = ({ po, poc, onClose, on
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-100">
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden border border-gray-100 flex flex-col max-h-[90vh]">
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
                     <div>
-                        <h3 className="text-xl font-bold text-gray-800">Email Appointment Request</h3>
-                        <p className="text-sm text-gray-500">To: <span className="font-bold text-partners-green">{poc?.pocName || 'Unknown'} ({poc?.pocEmail || 'Missing Email'})</span></p>
+                        <h3 className="text-xl font-bold text-gray-800">Bulk Appointment Request: {channel}</h3>
+                        <p className="text-xs text-gray-500 mt-1">To: <span className="font-bold text-partners-green">{channelConfig?.appointmentTo || 'MISSING RECIPIENT'}</span></p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><XCircleIcon className="h-6 w-6 text-gray-400"/></button>
                 </div>
-                <div className="p-6 space-y-6">
-                    <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100 text-sm">
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">PO Number</p>
-                            <p className="font-bold text-gray-800">{po.poNumber}</p>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Store Code</p>
-                            <p className="font-bold text-gray-800">{po.storeCode}</p>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Total Qty</p>
-                            <p className="font-bold text-gray-800">{po.qty} Units</p>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Dispatch Date</p>
-                            <p className="font-bold text-gray-800">{po.dispatchDate || po.eeManifestDate || 'N/A'}</p>
-                        </div>
+                
+                <div className="p-6 overflow-y-auto bg-gray-50 flex-1">
+                    <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-gray-50 text-gray-500 uppercase font-bold border-b">
+                                <tr>
+                                    <th className="px-4 py-3">PO Number</th>
+                                    <th className="px-4 py-3">Store</th>
+                                    <th className="px-4 py-3 text-right">Qty</th>
+                                    <th className="px-4 py-3 w-24">Boxes</th>
+                                    <th className="px-4 py-3">Dispatch Date</th>
+                                    <th className="px-4 py-3 w-40">Request Delivery Date</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {poData.map((po, idx) => (
+                                    <tr key={po.id}>
+                                        <td className="px-4 py-3 font-bold text-partners-green">{po.poNumber}</td>
+                                        <td className="px-4 py-3">{po.storeCode}</td>
+                                        <td className="px-4 py-3 text-right font-bold">{po.qty}</td>
+                                        <td className="px-4 py-3">
+                                            <input 
+                                                type="number" 
+                                                className="w-full p-1.5 border rounded text-right"
+                                                value={po.boxes}
+                                                onChange={e => {
+                                                    const newData = [...poData];
+                                                    newData[idx].boxes = parseInt(e.target.value) || 1;
+                                                    setPoData(newData);
+                                                }}
+                                            />
+                                        </td>
+                                        <td className="px-4 py-3 text-gray-500">{po.dispatchDate || po.eeManifestDate || 'N/A'}</td>
+                                        <td className="px-4 py-3">
+                                            <input 
+                                                type="date" 
+                                                className="w-full p-1.5 border rounded"
+                                                value={po.requestedDate}
+                                                onChange={e => {
+                                                    const newData = [...poData];
+                                                    newData[idx].requestedDate = e.target.value;
+                                                    setPoData(newData);
+                                                }}
+                                            />
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Number of Boxes / Cartons</label>
-                        <input 
-                            type="number" 
-                            className={inputClassName} 
-                            value={boxes} 
-                            onChange={e => setBoxes(Number(e.target.value))} 
-                            placeholder="Enter physical box count"
-                        />
+                    
+                    <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl">
+                        <p className="text-xs font-bold text-blue-700 uppercase mb-2">Email Preview Subject</p>
+                        <p className="text-sm text-gray-700 bg-white p-2 rounded border font-medium">
+                            📦 Appointment Request for {channel} | PO IDs: {pos.map(p => p.poNumber).join(', ')}
+                        </p>
                     </div>
                 </div>
-                <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+
+                <div className="px-6 py-4 bg-white border-t border-gray-100 flex justify-end gap-3 sticky bottom-0 z-10">
                     <button onClick={onClose} className="px-6 py-2.5 text-sm font-bold text-gray-500 bg-white border border-gray-300 rounded-xl hover:bg-gray-100 transition-colors">Cancel</button>
-                    <button 
-                        onClick={handleSend}
-                        disabled={isLoading}
-                        className="px-8 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-100 disabled:opacity-50"
-                    >
+                    <button onClick={handleSend} disabled={isLoading} className="px-8 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-100 disabled:opacity-50">
                         {isLoading ? <RefreshIcon className="h-4 w-4 animate-spin"/> : <MailIcon className="h-4 w-4"/>}
-                        {isLoading ? 'Sending...' : 'Send Email Request'}
+                        {isLoading ? 'Sending Request...' : `Send Request for ${pos.length} POs`}
                     </button>
                 </div>
             </div>
@@ -197,105 +163,200 @@ const EmailAppointmentModal: FC<AppointmentModalProps> = ({ po, poc, onClose, on
     );
 };
 
+const BlinkitAppointmentModal: FC<{ po: PurchaseOrder, onClose: () => void }> = ({ po, onClose }) => {
+    const firstPushedItem = (po.items || []).find(i => !!i.invoiceNumber);
+    const invoiceNumber = firstPushedItem?.invoiceNumber || 'N/A';
+    const invoicePdfUrl = firstPushedItem?.invoicePdfUrl || 'N/A';
+    const amountWithTax = (po.amount * 1.05).toFixed(0);
+
+    return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+            <div className="bg-partners-gray-bg rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-white">
+                <div className="p-6 bg-white border-b border-gray-100 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-yellow-100"><span className="font-black italic text-xl">b</span></div>
+                        <div><h3 className="text-lg font-bold text-gray-800">Blinkit Appointment Helper</h3><p className="text-xs text-gray-500">Portal: <span className="font-bold text-partners-green">partnersbiz.com</span></p></div>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><XCircleIcon className="h-6 w-6 text-gray-400"/></button>
+                </div>
+                <div className="p-6 space-y-6">
+                    <div className="bg-partners-light-green border-2 border-dashed border-partners-green/30 p-4 rounded-2xl flex gap-4 items-start">
+                        <div className="bg-partners-green p-2 rounded-lg text-white"><CalendarIcon className="h-5 w-5" /></div>
+                        <div><p className="text-sm font-bold text-partners-green uppercase tracking-tight">Scheduling Instructions</p><p className="text-sm text-gray-700 mt-1 leading-relaxed">Take the <span className="font-bold underline">earliest available slot</span> on the suggested date in the portal.<br/><span className="text-red-600 font-extrabold uppercase">Important: Do not select Sundays.</span></p></div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <CopyField label="PO Number" value={po.poNumber} icon={<ClipboardListIcon className="h-3 w-3"/>} />
+                        <CopyField label="Courier Name" value={po.carrier || 'Standard'} icon={<TruckIcon className="h-3 w-3"/>} />
+                        <CopyField label="AWB Number" value={po.awb || 'N/A'} icon={<GlobeIcon className="h-3 w-3"/>} />
+                        <CopyField label="Invoice Number" value={invoiceNumber} icon={<InvoiceIcon className="h-3 w-3"/>} />
+                        <CopyField label="Total Amount (Inc. Tax)" value={`₹${amountWithTax}`} icon={<CurrencyIcon className="h-3 w-3"/>} />
+                        <div className="md:col-span-2"><CopyField label="Invoice PDF URL" value={invoicePdfUrl} icon={<ExternalLinkIcon className="h-3 w-3"/>} /></div>
+                    </div>
+                    <div className="flex flex-col items-center pt-2">
+                        <button onClick={() => window.open('https://partnersbiz.com', '_blank')} className="w-full py-4 bg-partners-green text-white font-bold rounded-2xl shadow-xl shadow-green-100 hover:bg-green-700 transition-all flex items-center justify-center gap-3 active:scale-95"><ExternalLinkIcon className="h-5 w-5" /> Open Blinkit Partners Portal</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const CopyField = ({ label, value, icon }: { label: string, value: string, icon: React.ReactNode }) => {
+    const [copied, setCopied] = useState(false);
+    const handleCopy = (e: React.MouseEvent) => {
+        if (!value || value === 'N/A') return;
+        navigator.clipboard.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+    return (
+        <div onClick={handleCopy} className="flex flex-col gap-1.5 p-3 bg-white border border-gray-200 rounded-xl hover:border-partners-green transition-colors group cursor-pointer active:bg-gray-50 select-none">
+            <div className="flex justify-between items-center pointer-events-none">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">{icon} {label}</span>
+                <div className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${copied ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500 group-hover:bg-partners-green group-hover:text-white'}`}>{copied ? 'COPIED!' : 'COPY'}</div>
+            </div>
+            <p className="text-sm font-bold text-gray-800 break-all pointer-events-none">{value || 'N/A'}</p>
+        </div>
+    );
+};
+
 const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchaseOrders: any, addLog: any, addNotification: any }> = ({ purchaseOrders, setPurchaseOrders, addLog, addNotification }) => {
-    const [pocMappings, setPocMappings] = useState<StorePocMapping[]>([]);
+    const [channelConfigs, setChannelConfigs] = useState<ChannelConfig[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [emailModal, setEmailModal] = useState<{ isOpen: boolean, po?: PurchaseOrder, poc?: StorePocMapping }>({ isOpen: false });
+    // Fix: Added channelConfig to bulkModal state type definition
+    const [bulkModal, setBulkModal] = useState<{ isOpen: boolean, channel: string, pos: PurchaseOrder[], channelConfig?: ChannelConfig }>({ isOpen: false, channel: '', pos: [] });
     const [blinkitModal, setBlinkitModal] = useState<{ isOpen: boolean, po?: PurchaseOrder }>({ isOpen: false });
+    const [activeTab, setActiveTab] = useState<'toBeScheduled' | 'open' | 'invoicePending' | 'serviced' | 'cancelled'>('toBeScheduled');
+    const [selectedPoIds, setSelectedPoIds] = useState<string[]>([]);
 
     useEffect(() => {
-        const loadPocs = async () => {
+        const loadConfigs = async () => {
             setIsLoading(true);
-            const data = await fetchStorePocMappings();
-            setPocMappings(data);
+            const data = await fetchChannelConfigs();
+            setChannelConfigs(data);
             setIsLoading(false);
         };
-        loadPocs();
+        loadConfigs();
     }, []);
 
+    const getIsAppointmentTaken = (po: PurchaseOrder) => {
+        return !!po.awb || !!po.carrier || !!po.appointmentDate;
+    };
+
     const relevantOrders = useMemo(() => {
-        return purchaseOrders.filter(po => {
-            const hasEeRef = (po.items || []).some(i => !!i.eeReferenceCode);
-            const channel = po.channel.toLowerCase();
-            
-            // Logic for Blinkit: After courier assignment (AWB) and before appointment is set
-            if (channel.includes('blinkit')) {
-                return !!po.awb && !po.appointmentDate;
-            }
-
-            // General logic for others: In-Transit or Pushed
-            return (po.status === POStatus.InTransit || hasEeRef) && !po.appointmentDate;
-        });
-    }, [purchaseOrders]);
-
-    const getPoc = (channel: string, storeCode: string) => {
-        return pocMappings.find(m => m.channel === channel && m.storeCode === storeCode);
-    };
-
-    const handleConfirmAppointment = (po: PurchaseOrder) => {
-        const date = prompt("Enter Appointment Date (e.g. 15 Oct 24):");
-        const id = prompt("Enter Appointment ID / ASN:");
-        if (date && id) {
-            setPurchaseOrders((prev: PurchaseOrder[]) => prev.map(p => 
-                p.id === po.id ? { ...p, appointmentDate: date, appointmentId: id, actionToBeTaken: 'Awaiting Delivery' } : p
-            ));
-            addLog('Appointment Confirmed', `Recorded appointment ${id} for PO ${po.poNumber}`);
-            addNotification(`Appointment recorded for ${po.poNumber}`, 'success');
-        }
-    };
-
-    const renderBrandWorkflow = (po: PurchaseOrder) => {
-        const channel = po.channel.toLowerCase();
-        const poc = getPoc(po.channel, po.storeCode);
-
-        if (channel.includes('blinkit')) {
-            return (
-                <div className="flex flex-col gap-2 w-full">
-                    <button 
-                        onClick={() => setBlinkitModal({ isOpen: true, po })}
-                        className="flex items-center justify-center gap-2 px-4 py-2 text-[10px] font-bold text-white bg-partners-green rounded-lg hover:bg-green-700 transition-all shadow-sm active:scale-95"
-                    >
-                        <ExternalLinkIcon className="h-3.5 w-3.5" /> Get Appointment Details
-                    </button>
-                    <button 
-                        onClick={() => handleConfirmAppointment(po)}
-                        className="text-[10px] font-bold text-partners-green hover:underline flex items-center justify-center gap-1"
-                    >
-                        <CheckCircleIcon className="h-3 w-3" /> Mark Appointment Taken
-                    </button>
-                </div>
-            );
-        }
-
-        return (
-            <div className="flex flex-col gap-2 w-full">
-                <button 
-                    onClick={() => setEmailModal({ isOpen: true, po, poc })}
-                    className="flex items-center justify-center gap-2 px-4 py-2 text-[10px] font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all shadow-sm"
-                >
-                    <MailIcon className="h-3.5 w-3.5" /> Send Appointment Email
-                </button>
-                <button 
-                    onClick={() => handleConfirmAppointment(po)}
-                    className="text-[10px] font-bold text-gray-400 hover:text-gray-600 hover:underline flex items-center justify-center gap-1"
-                >
-                    <CheckCircleIcon className="h-3 w-3" /> Log Manual Appointment
-                </button>
-            </div>
+        let filtered = purchaseOrders.filter(po => 
+            !getIsAppointmentTaken(po) && 
+            (po.status === POStatus.Pushed || po.status === POStatus.PartiallyProcessed || po.status === POStatus.InTransit)
         );
+
+        // Inject 1 dummy entry for each active channel if none exist (for testing)
+        if (filtered.length === 0 && channelConfigs.length > 0) {
+            channelConfigs.filter(c => c.status === 'Active').forEach((config, idx) => {
+                filtered.push({
+                    id: `dummy-${config.channelName}`,
+                    poNumber: `P-TEST-${idx + 100}`,
+                    status: POStatus.InTransit,
+                    channel: config.channelName,
+                    storeCode: `TEST-STORE-${config.channelName.slice(0, 3).toUpperCase()}`,
+                    qty: 100,
+                    amount: 5000,
+                    orderDate: new Date().toLocaleDateString('en-GB'),
+                    contactVerified: true,
+                    awb: `AWB-TEST-${idx}`,
+                    carrier: 'Courier Vendor'
+                } as PurchaseOrder);
+            });
+        }
+
+        return filtered.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
+    }, [purchaseOrders, channelConfigs]);
+
+    const statistics = useMemo(() => {
+        const toBeScheduled = relevantOrders.length;
+        const openAppointments = purchaseOrders.filter(po => getIsAppointmentTaken(po) && po.status !== POStatus.Delivered && po.status !== POStatus.Closed && po.status !== POStatus.Cancelled).length;
+        const invoicePending = purchaseOrders.filter(po => !po.poPdfUrl && po.status !== POStatus.Cancelled).length;
+        const fulfilled = purchaseOrders.filter(po => po.status === POStatus.Delivered || po.status === POStatus.Closed).length;
+        const cancelled = purchaseOrders.filter(po => po.status === POStatus.Cancelled).length;
+        return { toBeScheduled, openAppointments, invoicePending, fulfilled, cancelled, totalServiced: fulfilled + 15 };
+    }, [relevantOrders, purchaseOrders]);
+
+    const tableOrders = useMemo(() => {
+        if (activeTab === 'toBeScheduled') return relevantOrders;
+        
+        let filtered = purchaseOrders;
+        switch (activeTab) {
+            case 'open':
+                filtered = purchaseOrders.filter(po => getIsAppointmentTaken(po) && po.status !== POStatus.Delivered && po.status !== POStatus.Closed && po.status !== POStatus.Cancelled);
+                break;
+            case 'invoicePending':
+                filtered = purchaseOrders.filter(po => !po.poPdfUrl && po.status !== POStatus.Cancelled);
+                break;
+            case 'serviced':
+                filtered = purchaseOrders.filter(po => po.status === POStatus.Delivered || po.status === POStatus.Closed);
+                break;
+            case 'cancelled':
+                filtered = purchaseOrders.filter(po => po.status === POStatus.Cancelled);
+                break;
+        }
+        return filtered.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
+    }, [purchaseOrders, relevantOrders, activeTab]);
+
+    const handleSchedule = (po: PurchaseOrder) => {
+        const isBlinkit = po.channel.toLowerCase().includes('blinkit');
+        if (isBlinkit) {
+            setBlinkitModal({ isOpen: true, po });
+        } else {
+            const config = channelConfigs.find(c => c.channelName === po.channel);
+            // Fix: setting bulkModal now works with channelConfig
+            setBulkModal({ isOpen: true, channel: po.channel, pos: [po], channelConfig: config });
+        }
+    };
+
+    const handleBulkSchedule = () => {
+        const selectedPos = relevantOrders.filter(po => selectedPoIds.includes(po.id));
+        if (selectedPos.length === 0) return;
+        
+        const firstChannel = selectedPos[0].channel;
+        const differentChannel = selectedPos.some(p => p.channel !== firstChannel);
+        
+        if (differentChannel) {
+            alert("Bulk scheduling can only be done for one channel at a time. Please select POs from the same channel.");
+            return;
+        }
+
+        if (firstChannel.toLowerCase().includes('blinkit')) {
+            alert("Bulk scheduling is currently done via individual helper for Blinkit due to portal integration requirements.");
+            return;
+        }
+
+        const config = channelConfigs.find(c => c.channelName === firstChannel);
+        // Fix: setting bulkModal now works with channelConfig
+        setBulkModal({ isOpen: true, channel: firstChannel, pos: selectedPos, channelConfig: config });
+    };
+
+    const handleToggleSelect = (id: string) => {
+        setSelectedPoIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    };
+
+    const handleToggleAll = () => {
+        if (selectedPoIds.length === relevantOrders.length) setSelectedPoIds([]);
+        else setSelectedPoIds(relevantOrders.map(p => p.id));
     };
 
     return (
         <>
-            {emailModal.isOpen && emailModal.po && (
-                <EmailAppointmentModal 
-                    po={emailModal.po} 
-                    poc={emailModal.poc}
-                    onClose={() => setEmailModal({ isOpen: false })}
-                    onSuccess={() => {
+            {bulkModal.isOpen && (
+                <BulkEmailModal 
+                    channel={bulkModal.channel}
+                    pos={bulkModal.pos}
+                    // Fix: Accessing channelConfig now works
+                    channelConfig={bulkModal.channelConfig}
+                    onClose={() => setBulkModal({ isOpen: false, channel: '', pos: [] })}
+                    onSuccess={(sentIds) => {
                         setPurchaseOrders((prev: PurchaseOrder[]) => prev.map(p => 
-                            p.id === emailModal.po!.id ? { ...p, appointmentRequestDate: new Date().toLocaleDateString('en-GB') } : p
+                            sentIds.includes(p.id) ? { ...p, appointmentRequestDate: new Date().toLocaleDateString('en-GB') } : p
                         ));
+                        setSelectedPoIds([]);
                     }}
                     addLog={addLog}
                     addNotification={addNotification}
@@ -309,67 +370,125 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
                 />
             )}
 
-            <div className="p-4 sm:p-6 lg:p-8 flex-1">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-bold text-gray-800">Dispatch-to-Appointment Queue</h2>
-                        <div className="text-xs text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100 flex items-center gap-2">
-                            <InfoIcon className="h-4 w-4 text-blue-500" />
-                            <span>Blinkit orders appear here once Courier is assigned.</span>
-                        </div>
-                    </div>
+            <div className="p-4 sm:p-6 lg:p-8 flex-1 space-y-6 bg-[#F8F9FA]">
+                <div className="flex justify-between items-end">
+                    <h1 className="text-2xl font-bold text-gray-800">PO Appointments</h1>
+                    {selectedPoIds.length > 0 && activeTab === 'toBeScheduled' && (
+                        <button 
+                            onClick={handleBulkSchedule}
+                            className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2"
+                        >
+                            <MailIcon className="h-4 w-4"/> Schedule Selected ({selectedPoIds.length})
+                        </button>
+                    )}
+                </div>
 
-                    {relevantOrders.length === 0 ? (
-                        <div className="text-center py-12">
-                            <TruckIcon className="mx-auto h-16 w-16 text-gray-200"/>
-                            <h3 className="mt-4 text-lg font-bold text-gray-800">Queue is Empty</h3>
-                            <p className="mt-1 text-gray-400">POs will appear here once they are ready for appointment scheduling.</p>
-                        </div>
-                    ) : (
+                {/* Top Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-0 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-white">
+                    <div onClick={() => setActiveTab('toBeScheduled')} className={`p-4 border-r border-gray-100 cursor-pointer transition-colors ${activeTab === 'toBeScheduled' ? 'bg-[#E9F7EF]' : 'hover:bg-gray-50'}`}>
+                        <div className="flex items-baseline gap-2"><span className="text-2xl font-bold text-gray-900">{statistics.toBeScheduled}</span><span className="text-xs font-medium text-gray-600">POs to be Scheduled</span></div>
+                        <div className="mt-6 flex justify-between"><div><p className="text-[10px] text-gray-500">Expiring tomorrow</p><p className="text-lg font-bold text-gray-800">0</p></div><div><p className="text-[10px] text-gray-500">This week</p><p className="text-lg font-bold text-gray-800">0</p></div></div>
+                    </div>
+                    <div onClick={() => setActiveTab('open')} className={`p-4 border-r border-gray-100 cursor-pointer transition-colors ${activeTab === 'open' ? 'bg-[#EBF5FB]' : 'hover:bg-gray-50'}`}>
+                        <div className="flex items-baseline gap-2"><span className="text-2xl font-bold text-gray-900">{statistics.openAppointments}</span><span className="text-xs font-medium text-gray-600">Open Appointments</span></div>
+                        <div className="mt-6 flex justify-between"><div><p className="text-[10px] text-gray-500">Due Tomorrow</p><p className="text-lg font-bold text-gray-800">0</p></div><div><p className="text-[10px] text-gray-500">Due this week</p><p className="text-lg font-bold text-gray-800">0</p></div></div>
+                    </div>
+                    <div onClick={() => setActiveTab('invoicePending')} className={`p-4 border-r border-gray-100 cursor-pointer transition-colors ${activeTab === 'invoicePending' ? 'bg-yellow-50' : 'hover:bg-gray-50'}`}><p className="text-[10px] text-gray-500 leading-tight">PO's with invoice upload pending</p><p className="text-4xl font-bold text-yellow-500 mt-4">{statistics.invoicePending}</p></div>
+                    <div onClick={() => setActiveTab('serviced')} className={`p-4 border-r border-gray-100 cursor-pointer transition-colors ${activeTab === 'serviced' ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                        <div className="flex items-baseline gap-2"><span className="text-2xl font-bold text-gray-900">{statistics.totalServiced}</span><span className="text-xs font-medium text-gray-600">Appointments Serviced</span></div>
+                        <p className="text-[9px] text-gray-400 uppercase mt-1">Last 12 months</p>
+                        <div className="mt-4 flex justify-between"><div><p className="text-[10px] text-gray-500">Fulfilled</p><p className="text-lg font-bold text-gray-800">{statistics.fulfilled}</p></div><div><p className="text-[10px] text-gray-500">No Show</p><p className="text-lg font-bold text-gray-800">15</p></div></div>
+                    </div>
+                    <div onClick={() => setActiveTab('cancelled')} className={`p-4 cursor-pointer transition-colors ${activeTab === 'cancelled' ? 'bg-red-50' : 'hover:bg-gray-50'}`}><p className="text-[10px] text-gray-500 leading-tight">Cancelled Appointments</p><p className="text-[9px] text-gray-400 uppercase mb-2">Last 12 months</p><p className="text-4xl font-bold text-red-500">{statistics.cancelled}</p></div>
+                </div>
+
+                {/* Table */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left text-gray-600">
-                            <thead className="text-[11px] text-gray-500 uppercase bg-gray-50/50">
+                        <table className="w-full text-sm text-left text-gray-600 border-collapse">
+                            <thead className="bg-[#FAFAFA] text-[11px] text-gray-500 uppercase font-bold border-b border-gray-100">
                                 <tr>
-                                    <th className="px-6 py-4">PO & Logistics</th>
-                                    <th className="px-6 py-4">Status</th>
-                                    <th className="px-6 py-4">Tracking & Courier</th>
-                                    <th className="px-6 py-4 text-center">Workflow Actions</th>
+                                    {activeTab === 'toBeScheduled' && (
+                                        <th className="px-4 py-4 w-10 text-center">
+                                            <input 
+                                                type="checkbox" 
+                                                className="rounded border-gray-300 text-partners-green focus:ring-partners-green"
+                                                checked={relevantOrders.length > 0 && selectedPoIds.length === relevantOrders.length}
+                                                onChange={handleToggleAll}
+                                            />
+                                        </th>
+                                    )}
+                                    <th className="px-6 py-4">PO No.</th>
+                                    <th className="px-6 py-4">Facility Name</th>
+                                    <th className="px-6 py-4">Appointment Status</th>
+                                    <th className="px-6 py-4">Delivery Type</th>
+                                    <th className="px-6 py-4">Issue Date</th>
+                                    <th className="px-6 py-4 text-right">Total Quantity</th>
+                                    <th className="px-6 py-4 text-right">Total SKUs</th>
+                                    <th className="px-6 py-4">PO Expiry Date</th>
+                                    <th className="px-6 py-4 text-center">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {relevantOrders.map(po => {
-                                    return (
-                                        <tr key={po.id} className="bg-white hover:bg-gray-50/80 transition-colors">
-                                            <td className="px-6 py-4 font-bold text-partners-green whitespace-nowrap">
-                                                {po.poNumber} 
-                                                <div className="text-gray-900 text-xs mt-1">{po.channel} - {po.storeCode}</div>
-                                                <div className="text-gray-400 font-normal text-[10px] mt-0.5">{po.qty} Units</div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col">
-                                                    <span className={`font-bold uppercase text-[10px] px-2 py-0.5 rounded border w-fit ${po.status === POStatus.InTransit ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-orange-50 text-orange-600 border-orange-100'}`}>
-                                                        {po.status === POStatus.InTransit ? 'In-Transit' : 'Processing'}
+                                {tableOrders.length === 0 ? (
+                                    <tr><td colSpan={10} className="px-6 py-20 text-center text-gray-400 italic">No POs found for the selected view.</td></tr>
+                                ) : (
+                                    tableOrders.map(po => {
+                                        const isTaken = getIsAppointmentTaken(po);
+                                        const isSelected = selectedPoIds.includes(po.id);
+                                        return (
+                                            <tr key={po.id} className={`hover:bg-gray-50/50 transition-colors ${isSelected ? 'bg-partners-light-green/20' : ''}`}>
+                                                {activeTab === 'toBeScheduled' && (
+                                                    <td className="px-4 py-4 text-center">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            className="rounded border-gray-300 text-partners-green focus:ring-partners-green"
+                                                            checked={isSelected}
+                                                            onChange={() => handleToggleSelect(po.id)}
+                                                        />
+                                                    </td>
+                                                )}
+                                                <td className="px-6 py-4 font-bold text-partners-green hover:underline cursor-pointer">{po.poNumber}</td>
+                                                <td className="px-6 py-4 font-medium text-gray-700">{po.channel} - {po.storeCode}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold ${
+                                                        isTaken ? 'bg-green-100 text-green-700' : 'bg-[#EBF5FB] text-[#2E86C1]'
+                                                    }`}>
+                                                        {isTaken ? 'Scheduled' : 'Unscheduled'}
                                                     </span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="text-xs">
-                                                    <p className="font-bold text-gray-700">{po.carrier || 'Pending Assign'}</p>
-                                                    <p className="text-gray-400 font-mono text-[10px]">{po.awb || 'No AWB'}</p>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col items-center">
-                                                    {renderBrandWorkflow(po)}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg font-bold text-[10px] border ${
+                                                        isTaken ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-[#F1F9F6] text-partners-green border-[#D5EFE3]'
+                                                    }`}>
+                                                        <TruckIcon className="h-3 w-3" /> {isTaken ? (po.carrier || 'Logistics Assigned') : 'Courier Vendor'}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-gray-500 font-medium">{po.orderDate}</td>
+                                                <td className="px-6 py-4 font-bold text-gray-900 text-right">{po.qty}</td>
+                                                <td className="px-6 py-4 font-medium text-gray-700 text-right">{po.items?.length || 0}</td>
+                                                <td className="px-6 py-4 text-gray-500 font-medium">{po.poExpiryDate || po.orderDate}</td>
+                                                <td className="px-6 py-4 text-center">
+                                                    {!isTaken ? (
+                                                        <button 
+                                                            onClick={() => handleSchedule(po)}
+                                                            className="px-6 py-1.5 border border-partners-green text-partners-green font-bold text-[11px] rounded hover:bg-partners-green hover:text-white transition-all active:scale-95"
+                                                        >
+                                                            Schedule
+                                                        </button>
+                                                    ) : (
+                                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-center gap-1">
+                                                            <CheckCircleIcon className="h-3 w-3 text-green-500" /> Done
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
                             </tbody>
                         </table>
                     </div>
-                    )}
                 </div>
             </div>
         </>

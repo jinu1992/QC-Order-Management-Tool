@@ -1,3 +1,4 @@
+
 import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePocMapping, User, UploadMetadata } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbwBDSNnN_xKlZc4cTwwKthd7-Nq8IE83csNdNHODP55EnVEz-gfWzcvzYdxGeNbJSPzZQ/exec'; 
@@ -126,18 +127,15 @@ export const fetchStorePocMappings = async (): Promise<StorePocMapping[]> => {
     } catch (error) { return []; }
 };
 
-export const sendAppointmentEmail = async (po: PurchaseOrder, boxes: number, pocEmail: string) => {
+export const sendAppointmentEmail = async (params: { 
+  channel: string, 
+  pos: { poNumber: string, storeCode: string, qty: number, boxes: number, dispatchDate: string, trackingUrl: string, trackingStatus: string, requestedDate: string }[],
+  toEmails: string,
+  ccEmails: string
+}) => {
     const response = await postToScript({
         action: 'sendAppointmentEmail',
-        poNumber: po.poNumber,
-        storeCode: po.storeCode,
-        qty: po.qty,
-        boxes: boxes,
-        dispatchDate: po.dispatchDate || po.eeManifestDate || 'N/A',
-        carrier: po.carrier || 'N/A',
-        trackingUrl: po.trackingUrl || 'N/A',
-        trackingStatus: po.latestTrackingStatus || 'In-Transit',
-        pocEmail: pocEmail
+        ...params
     });
     return await response.json();
 };
@@ -184,7 +182,9 @@ const transformSheetDataToChannelConfigs = (rows: any[]): ChannelConfig[] => {
         minOrderThreshold: Number(row['Min Order Threshold'] || 0),
         pocName: row['POC Name'] || '',
         pocEmail: row['POC Email'] || '',
-        pocPhone: row['POC Phone'] || ''
+        pocPhone: row['POC Phone'] || '',
+        appointmentTo: row['Appointment To'] || '',
+        appointmentCc: row['Appointment Cc'] || ''
     }));
 };
 
@@ -234,6 +234,7 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
             priceCheckStatus: String(row['Price Check'] || '').trim(),
             eeOrderRefId: row['EE Order Ref ID'] || row['EE_Order_Ref_ID'],
             eeReferenceCode: row['EE_reference_code'], 
+            eeOrderDate: formatSheetDate(row['EE_order_date']),
             itemStatus: row['EE_item_item_status'],
             itemQuantity: Number(row['EE_item_item_quantity'] || 0),
             cancelledQuantity: Number(row['EE_item_cancelled_quantity'] || 0),

@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { ActivityLog, User, Role, ViewType, RolePermissions, ChannelConfig } from '../types';
-import { ShieldCheckIcon, UserGroupIcon, LockClosedIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, PlusIcon, AdminIcon, CogIcon, RefreshIcon, GlobeIcon } from './icons/Icons';
+import { ShieldCheckIcon, UserGroupIcon, LockClosedIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, PlusIcon, AdminIcon, CogIcon, RefreshIcon, GlobeIcon, MailIcon } from './icons/Icons';
 import { saveChannelConfig, saveSystemConfig, fetchSystemConfig, saveUserToSheet, deleteUserFromSheet } from '../services/api';
 
 interface AdminPanelProps {
@@ -115,10 +116,12 @@ const ChannelModal: React.FC<ChannelModalProps> = ({ channel, onClose, onSave })
         minOrderThreshold: 0,
         pocName: '',
         pocEmail: '',
-        pocPhone: ''
+        pocPhone: '',
+        appointmentTo: '',
+        appointmentCc: ''
     });
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const value = e.target.type === 'number' ? Number(e.target.value) : e.target.value;
         setFormData({ ...formData, [e.target.name]: value });
     };
@@ -130,8 +133,8 @@ const ChannelModal: React.FC<ChannelModalProps> = ({ channel, onClose, onSave })
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl">
-                <div className="p-6 border-b">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <div className="p-6 border-b sticky top-0 bg-white z-10">
                     <h3 className="text-lg font-semibold text-gray-800">{channel ? 'Edit Channel' : 'Add New Channel'}</h3>
                 </div>
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -150,8 +153,36 @@ const ChannelModal: React.FC<ChannelModalProps> = ({ channel, onClose, onSave })
                          <label className="block text-sm font-medium text-gray-700">Min Order Threshold (₹)</label>
                          <input type="number" name="minOrderThreshold" value={formData.minOrderThreshold} onChange={handleChange} className={inputClassName} />
                     </div>
+
                     <div className="col-span-1 md:col-span-2">
-                         <h4 className="text-sm font-semibold text-gray-600 mb-2 mt-2 border-b pb-1">Integration Details</h4>
+                         <h4 className="text-sm font-semibold text-gray-600 mb-2 mt-2 border-b pb-1 flex items-center gap-2"><MailIcon className="h-4 w-4"/> Appointment Email Configuration</h4>
+                    </div>
+                    <div className="col-span-1 md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700">Recipient Email(s) - To</label>
+                        <textarea 
+                            name="appointmentTo" 
+                            rows={2}
+                            value={formData.appointmentTo || ''} 
+                            onChange={handleChange} 
+                            placeholder="email1@domain.com, email2@domain.com" 
+                            className={inputClassName} 
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1">Separate multiple emails with a comma.</p>
+                    </div>
+                    <div className="col-span-1 md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700">Recipient Email(s) - CC</label>
+                        <textarea 
+                            name="appointmentCc" 
+                            rows={2}
+                            value={formData.appointmentCc || ''} 
+                            onChange={handleChange} 
+                            placeholder="finance@cubelelo.com, logistics@cubelelo.com" 
+                            className={inputClassName} 
+                        />
+                    </div>
+
+                    <div className="col-span-1 md:col-span-2">
+                         <h4 className="text-sm font-semibold text-gray-600 mb-2 mt-4 border-b pb-1">Integration Details</h4>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Source Email</label>
@@ -172,12 +203,8 @@ const ChannelModal: React.FC<ChannelModalProps> = ({ channel, onClose, onSave })
                          <label className="block text-sm font-medium text-gray-700">POC Email</label>
                         <input name="pocEmail" value={formData.pocEmail} onChange={handleChange} className={inputClassName} />
                     </div>
-                    <div>
-                         <label className="block text-sm font-medium text-gray-700">POC Phone</label>
-                        <input name="pocPhone" value={formData.pocPhone} onChange={handleChange} className={inputClassName} />
-                    </div>
                 </div>
-                <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 rounded-b-lg">
+                <div className="px-6 py-4 bg-gray-50 border-t sticky bottom-0 flex justify-end gap-3">
                     <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
                     <button onClick={handleSave} className="px-4 py-2 text-sm font-medium text-white bg-partners-green border border-transparent rounded-md hover:bg-green-700">Save Configuration</button>
                 </div>
@@ -499,7 +526,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ logs, users, setUsers, rolePerm
                                             <th className="px-6 py-3">Status</th>
                                             <th className="px-6 py-3">Threshold</th>
                                             <th className="px-6 py-3">Source</th>
-                                            <th className="px-6 py-3">POC</th>
+                                            <th className="px-6 py-3">Recipient Emails (To)</th>
                                             <th className="px-6 py-3 text-right">Actions</th>
                                         </tr>
                                     </thead>
@@ -521,8 +548,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ logs, users, setUsers, rolePerm
                                                         <div className="text-gray-400">Key: {channel.searchKeyword}</div>
                                                     </td>
                                                     <td className="px-6 py-4 text-xs">
-                                                        <div>{channel.pocName}</div>
-                                                        <div className="text-gray-400">{channel.pocEmail}</div>
+                                                        <div className="truncate max-w-[200px]" title={channel.appointmentTo}>{channel.appointmentTo || 'Not set'}</div>
+                                                        <div className="text-gray-400 truncate max-w-[200px]" title={channel.appointmentCc}>{channel.appointmentCc ? `CC: ${channel.appointmentCc}` : ''}</div>
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
                                                         <button onClick={() => setChannelModal({ isOpen: true, channel })} className="text-partners-green hover:underline font-medium">Edit</button>

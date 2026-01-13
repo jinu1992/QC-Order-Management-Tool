@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, Fragment, useMemo, useRef } from 'react';
 import { POStatus, type PurchaseOrder, POItem, InventoryItem } from '../types';
 import StatusBadge from './StatusBadge';
@@ -23,9 +22,9 @@ import { pushToEasyEcom, requestZohoSync, cancelPurchaseOrder } from '../service
 
 // --- Utilities ---
 
-const parseDate = (dateStr: string): number => {
+const parseDate = (dateStr: string | undefined): number => {
     try {
-        if (!dateStr) return 0;
+        if (!dateStr || dateStr.trim() === "") return 0;
         const parts = dateStr.match(/(\d+)\s+(\w+)\s+(\d+)/);
         if (parts && parts.length === 4) {
             const day = parts[1];
@@ -82,7 +81,8 @@ const OrderRow: React.FC<OrderRowProps> = ({
     const items = po.items || [];
     const selectableItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) >= i.qty);
     const selectedCount = items.filter(i => isSelected(i.articleCode)).length;
-    const effectiveDate = po.eeOrderDate || po.orderDate;
+    // Primary source is eeOrderDate as requested
+    const effectiveDate = po.eeOrderDate || 'N/A';
     const rawStatus = String(po.status || '').trim().toLowerCase();
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -193,7 +193,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><CalendarIcon className="h-4 w-4 text-blue-500" /> Fulfillment Ref</h4>
                                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
                                     <div><p className="text-[10px] uppercase font-bold text-gray-400">PO Ref</p><p className="text-xs font-bold text-partners-green truncate">{po.poNumber}</p></div>
-                                    <div><p className="text-[10px] uppercase font-bold text-gray-400">PO Date (EE)</p><p className="text-xs font-bold text-gray-700">{po.eeOrderDate || po.orderDate || 'N/A'}</p></div>
+                                    <div><p className="text-[10px] uppercase font-bold text-gray-400">Order Date (EE)</p><p className="text-xs font-bold text-gray-700">{po.eeOrderDate || 'N/A'}</p></div>
                                     <div><p className="text-[10px] uppercase font-bold text-gray-400">EasyEcom Cust ID</p><p className={`text-xs font-bold ${po.eeCustomerId ? 'text-blue-600' : 'text-red-500 italic'}`}>{po.eeCustomerId || 'Not Mapped'}</p></div>
                                     <div><p className="text-[10px] uppercase font-bold text-gray-400">Expiry Date</p><p className="text-xs font-bold text-red-600">{po.poExpiryDate || 'N/A'}</p></div>
                                     <div><p className="text-[10px] uppercase font-bold text-gray-400">PO PDF</p>{po.poPdfUrl ? <a href={po.poPdfUrl} target="_blank" rel="noopener noreferrer" className="text-partners-green hover:underline flex items-center gap-1 text-xs font-bold mt-0.5"><PaperclipIcon className="h-3 w-3" /> View PO PDF</a> : <p className="text-xs text-gray-300 font-bold italic mt-0.5">Not Uploaded</p>}</div>
@@ -360,10 +360,10 @@ const PoTable: React.FC<PoTableProps> = ({
             orders = orders.filter(po => String((po as any)[key] || '').toLowerCase().includes(val));
         });
         
-        // Sorting by newest EE Order Date first
+        // Sorting by newest EE Order Date first (Descending)
         orders.sort((a, b) => {
-            const dateA = parseDate(a.eeOrderDate || a.orderDate);
-            const dateB = parseDate(b.eeOrderDate || b.orderDate);
+            const dateA = parseDate(a.eeOrderDate);
+            const dateB = parseDate(b.eeOrderDate);
             return dateB - dateA;
         });
         return orders;

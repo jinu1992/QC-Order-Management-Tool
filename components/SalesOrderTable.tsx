@@ -129,9 +129,9 @@ const BlinkitAppointmentModal: FC<{ so: GroupedSalesOrder, onClose: () => void }
     );
 };
 
-const parseDateString = (dateStr: string): number => {
+const parseDateString = (dateStr: string | undefined): number => {
     try {
-        if (!dateStr) return 0;
+        if (!dateStr || dateStr.trim() === "") return 0;
         const parts = dateStr.match(/(\d+)\s+(\w+)\s+(\d+)/);
         if (parts && parts.length === 4) {
             const day = parts[1];
@@ -188,7 +188,9 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 const invNum = item.invoiceNumber;
                 const maniDate = item.eeManifestDate || po.eeManifestDate;
                 const eeStatus = (item.eeOrderStatus || po.eeOrderStatus || 'Processing').trim();
-                const effectiveOrderDate = po.eeOrderDate || po.orderDate;
+                
+                // Strictly use EE_order_date from item level for SO ID mapping as requested
+                const effectiveOrderDate = item.eeOrderDate || po.eeOrderDate || 'N/A';
                 
                 let displayStatus = eeStatus;
                 if (maniDate) {
@@ -256,6 +258,11 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         return 1; 
                     };
                     if (statusRank(displayStatus) > statusRank(groups[refCode].status)) groups[refCode].status = displayStatus;
+                    
+                    if (groups[refCode].orderDate === 'N/A' && effectiveOrderDate !== 'N/A') {
+                        groups[refCode].orderDate = effectiveOrderDate;
+                    }
+
                     if (!groups[refCode].batchCreatedAt) groups[refCode].batchCreatedAt = batchDate;
                     if (!groups[refCode].invoiceDate) groups[refCode].invoiceDate = item.invoiceDate;
                     if (!groups[refCode].manifestDate) groups[refCode].manifestDate = maniDate;
@@ -368,9 +375,15 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
     const getPrimaryAction = (so: GroupedSalesOrder) => {
         const isExecuting = isCreatingInvoice === so.id || isPushingNimbus === so.id;
+        const eeStatusLower = so.originalEeStatus.toLowerCase().trim();
         
-        // Strictly Gate: Only Batch Created orders can generate invoices
-        if (!so.invoiceNumber && so.status === 'Batch Created') {
+        // Refined Gate Logic: Invoicing option is ONLY available if status is 'confirmed' or later (progression to Batch Created).
+        // It strictly disables the option if the EE status is 'open'.
+        const canInvoice = !so.invoiceNumber && 
+            eeStatusLower !== 'open' &&
+            (eeStatusLower === 'confirmed' || so.status === 'Batch Created');
+
+        if (canInvoice) {
             return { 
                 label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', 
                 color: 'bg-purple-600 text-white hover:bg-purple-700', 
@@ -524,7 +537,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                         <div className="col-span-2 flex flex-col items-center justify-center py-4 text-center">
                                                                             <InvoiceIcon className="h-8 w-8 text-purple-200 mb-2" />
                                                                             <p className="text-xs font-bold text-purple-400 uppercase">No Invoice Generated</p>
-                                                                            {so.status === 'Batch Created' ? (
+                                                                            {(!so.invoiceNumber && so.originalEeStatus.toLowerCase().trim() !== 'open' && (so.originalEeStatus.toLowerCase().trim() === 'confirmed' || so.status === 'Batch Created')) ? (
                                                                                 <button 
                                                                                     onClick={() => handleCreateZohoInvoiceAction(so.id)} 
                                                                                     disabled={!!isCreatingInvoice} 
@@ -535,7 +548,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                                 </button>
                                                                             ) : (
                                                                                 <p className="mt-3 text-[10px] text-gray-400 italic bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
-                                                                                    Pending Picking/Batching in EasyEcom
+                                                                                    {so.originalEeStatus.toLowerCase().trim() === 'open' ? 'Awaiting Confirmation (Status: Open)' : 'Pending Picking/Batching in EasyEcom'}
                                                                                 </p>
                                                                             )}
                                                                         </div>
