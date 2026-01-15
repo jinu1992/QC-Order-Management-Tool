@@ -335,7 +335,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ logs, users, setUsers, rolePerm
         });
     };
 
-    const allViews: ViewType[] = ['Dashboard', 'Purchase Orders', 'Uploads', 'POC Verification', 'Appointments', 'Sales Orders', 'GRN / POD', 'Reports', 'Finance', 'Inventory', 'Admin'];
+    const allViews: ViewType[] = ['Dashboard', 'Purchase Orders', 'POC Verification', 'Appointments', 'Sales Orders', 'GRN / POD', 'Reports', 'Finance', 'Inventory', 'Admin'];
 
     return (
         <>

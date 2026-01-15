@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { DownloadIcon, BellIcon, CheckCircleIcon, InfoIcon, AdminIcon } from './icons/Icons';
+import { DownloadIcon, BellIcon, CheckCircleIcon, InfoIcon, AdminIcon, MenuIcon } from './icons/Icons';
 import { NotificationItem, ViewType } from '../types';
 
 interface HeaderProps {
@@ -9,9 +9,10 @@ interface HeaderProps {
     onClearAll: () => void;
     onViewLogs: () => void;
     activeView: ViewType;
+    onToggleSidebar: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ notifications, onMarkRead, onClearAll, onViewLogs, activeView }) => {
+const Header: React.FC<HeaderProps> = ({ notifications, onMarkRead, onClearAll, onViewLogs, activeView, onToggleSidebar }) => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
@@ -31,7 +32,6 @@ const Header: React.FC<HeaderProps> = ({ notifications, onMarkRead, onClearAll, 
     switch(activeView) {
         case 'Dashboard': return 'Real-time tracking of all purchase orders and shipment stages';
         case 'Purchase Orders': return 'Manage and process incoming purchase orders';
-        case 'Uploads': return 'Upload and parse new PO documents';
         case 'POC Verification': return 'Verify Point-of-Contact mobile numbers';
         case 'Appointments': return 'Schedule and track warehouse delivery slots';
         case 'Sales Orders': return 'Track fulfillment and shipping status of processed orders';
@@ -46,9 +46,18 @@ const Header: React.FC<HeaderProps> = ({ notifications, onMarkRead, onClearAll, 
 
   return (
     <header className="flex flex-col md:flex-row justify-between md:items-center bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-4 sticky top-0 z-40">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">{activeView === 'Dashboard' ? 'PO Dashboard' : activeView}</h1>
-        <p className="text-xs text-gray-500 mt-0.5">{getSubtext()}</p>
+      <div className="flex items-center gap-3">
+        <button 
+          onClick={onToggleSidebar}
+          className="p-2 -ml-2 text-gray-400 hover:text-partners-green hover:bg-partners-light-green rounded-lg transition-colors"
+          title="Toggle Navigation"
+        >
+          <MenuIcon className="h-6 w-6" />
+        </button>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">{activeView === 'Dashboard' ? 'PO Dashboard' : activeView}</h1>
+          <p className="text-xs text-gray-500 mt-0.5">{getSubtext()}</p>
+        </div>
       </div>
       
       <div className="mt-4 md:mt-0 flex items-center gap-4">

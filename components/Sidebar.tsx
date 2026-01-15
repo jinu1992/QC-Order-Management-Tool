@@ -33,10 +33,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, currentUse
   const allMenuItems: { name: ViewType, icon: React.ReactElement }[] = [
     { name: 'Dashboard', icon: <SummaryIcon /> },
     { name: 'Purchase Orders', icon: <ClipboardListIcon /> },
-    { name: 'Uploads', icon: <UploadIcon /> },
-    { name: 'File Uploader', icon: <FileIcon className="h-5 w-5" /> },
-    { name: 'Appointments', icon: <CalendarIcon /> },
     { name: 'Sales Orders', icon: <TruckIcon /> },
+    { name: 'Appointments', icon: <CalendarIcon /> },
+    { name: 'File Uploader', icon: <FileIcon className="h-5 w-5" /> },
     { name: 'Inventory', icon: <CubeIcon /> },
     { name: 'Finance', icon: <CurrencyIcon /> },
     { name: 'Reports', icon: <ReportIcon /> },
@@ -53,7 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, currentUse
             <div className="w-10 h-10 bg-partners-green rounded-xl mr-3 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-green-50">C</div>
             <div>
                 <h1 className="font-bold text-lg text-gray-800">Cubelelo</h1>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Partners Portal</p>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">B2B Quick Commerce Portal</p>
             </div>
         </div>
       </div>

@@ -83,7 +83,7 @@ function doPost(e) {
     if (action === 'createZohoInvoice') return handleCreateZohoInvoice(data.eeReferenceCode);
     if (action === 'pushToNimbus') return handlePushToNimbus(data.eeReferenceCode);
     if (action === 'syncZohoContactToEasyEcom') return responseJSON({status: 'success', message: 'Sync triggered'});
-    if (action === 'cancelPO') return cancelPurchaseOrder(data.poNumber);
+    if (action === 'updatePOStatus') return updatePOStatus(data.poNumber, data.status);
     
     return responseJSON({status: 'error', message: 'Invalid action: ' + action});
   } catch (error) {
@@ -91,7 +91,7 @@ function doPost(e) {
   }
 }
 
-function cancelPurchaseOrder(poNumber) {
+function updatePOStatus(poNumber, status) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEET_PO_DB);
@@ -100,35 +100,28 @@ function cancelPurchaseOrder(poNumber) {
     const data = sheet.getDataRange().getValues();
     const headers = data[0].map(h => String(h).trim().toLowerCase());
     
-    // Robust Header Detection
     let poNumIndex = headers.indexOf("po number");
     if (poNumIndex === -1) poNumIndex = headers.indexOf("po_number");
-    if (poNumIndex === -1) poNumIndex = headers.indexOf("purchase order");
     
     let statusIndex = headers.indexOf("status");
     if (statusIndex === -1) statusIndex = headers.indexOf("po status");
-    if (statusIndex === -1) statusIndex = headers.indexOf("po_status");
 
-    if (poNumIndex === -1) throw new Error("PO Number column not found.");
-    if (statusIndex === -1) throw new Error("Status column not found.");
+    if (poNumIndex === -1 || statusIndex === -1) throw new Error("Required columns not found.");
 
     let updateCount = 0;
     for (let i = 1; i < data.length; i++) {
-      const rowPo = String(data[i][poNumIndex]).trim();
-      if (rowPo === String(poNumber).trim()) {
-        sheet.getRange(i + 1, statusIndex + 1).setValue("Cancelled");
+      if (String(data[i][poNumIndex]).trim() === String(poNumber).trim()) {
+        sheet.getRange(i + 1, statusIndex + 1).setValue(status);
         updateCount++;
       }
     }
 
-    if (updateCount === 0) {
-      return responseJSON({ status: 'error', message: `PO ${poNumber} not found in database.` });
-    }
+    if (updateCount === 0) return responseJSON({ status: 'error', message: `PO ${poNumber} not found.` });
 
-    SpreadsheetApp.flush(); // Commit changes immediately
+    SpreadsheetApp.flush();
     return responseJSON({ 
       status: 'success', 
-      message: `Successfully marked PO ${poNumber} as Cancelled (${updateCount} rows affected).` 
+      message: `Successfully marked PO ${poNumber} as ${status}.` 
     });
   } catch (err) {
     return responseJSON({ status: 'error', message: err.toString() });

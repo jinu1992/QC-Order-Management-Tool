@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, Fragment, useMemo, useRef } from 'react';
-import { POStatus, type PurchaseOrder, POItem, InventoryItem } from '../types';
+import { POStatus, type PurchaseOrder, POItem, InventoryItem, ChannelConfig } from '../types';
 import StatusBadge from './StatusBadge';
 import { 
     DotsVerticalIcon, 
@@ -16,9 +17,10 @@ import {
     RefreshIcon, 
     SearchIcon, 
     FilterIcon,
-    TrashIcon
+    TrashIcon,
+    SortIcon
 } from './icons/Icons';
-import { pushToEasyEcom, requestZohoSync, cancelPurchaseOrder } from '../services/api';
+import { pushToEasyEcom, requestZohoSync, updatePOStatus } from '../services/api';
 
 // --- Utilities ---
 
@@ -42,15 +44,17 @@ const getCalculatedStatus = (po: PurchaseOrder): POStatus => {
     
     // 1. If explicitly cancelled in DB, it MUST be Cancelled
     if (rawStatus === 'cancelled') return POStatus.Cancelled;
+    
+    // 2. If explicitly marked as Below Threshold, return that
     if (rawStatus === 'below threshold') return POStatus.BelowThreshold;
     
-    // 2. Check item-level pushing status
+    // 3. Check item-level pushing status
     const items = po.items || [];
     const pushedCount = items.filter(i => !!i.eeOrderRefId).length;
     if (items.length > 0 && pushedCount === items.length) return POStatus.Pushed;
     if (pushedCount > 0) return POStatus.PartiallyProcessed;
     
-    // 3. Default to New
+    // 4. Default to New
     return POStatus.NewPO; 
 };
 
@@ -70,20 +74,22 @@ interface OrderRowProps {
     onTrackNotify: () => void;
     onCancel: () => void;
     isCancelling: boolean;
+    onMarkThreshold: () => void;
+    isMarkingThreshold: boolean;
+    channelConfigs: ChannelConfig[];
 }
 
 const OrderRow: React.FC<OrderRowProps> = ({ 
     po, isExpanded, onToggle, isSelected, onItemToggle, onSelectAll, 
-    isPushing, onPush, isSyncingZoho, onSyncZoho, onTrackNotify, onCancel, isCancelling 
+    isPushing, onPush, isSyncingZoho, onSyncZoho, onTrackNotify, onCancel, isCancelling,
+    onMarkThreshold, isMarkingThreshold, channelConfigs
 }) => {
     const poStatus = getCalculatedStatus(po);
     const amountIncTax = po.amount * 1.05;
     const items = po.items || [];
     const selectableItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) >= i.qty);
     const selectedCount = items.filter(i => isSelected(i.articleCode)).length;
-    // Primary source is eeOrderDate as requested
     const effectiveDate = po.eeOrderDate || 'N/A';
-    const rawStatus = String(po.status || '').trim().toLowerCase();
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -109,6 +115,10 @@ const OrderRow: React.FC<OrderRowProps> = ({
         actionColor = 'bg-gray-100 text-gray-400 border-gray-200';
         onActionClick = () => {};
         isDisabled = true;
+    } else if (poStatus === POStatus.BelowThreshold) {
+        actionLabel = 'Below Threshold';
+        actionColor = 'bg-orange-50 text-orange-600 border-orange-200';
+        onActionClick = onToggle;
     } else if (poStatus === POStatus.Pushed) {
         actionLabel = 'Track in Sales';
         actionColor = 'bg-partners-blue text-white hover:bg-blue-700';
@@ -125,8 +135,12 @@ const OrderRow: React.FC<OrderRowProps> = ({
         isDisabled = isPushing;
     }
 
-    // Cancellation is allowed for New POs or those marked Below Threshold, as long as not pushed.
-    const canCancel = (poStatus === POStatus.NewPO || poStatus === POStatus.BelowThreshold || rawStatus === 'open') && selectedCount === 0;
+    // Threshold logic from Admin Channel Config
+    const config = channelConfigs.find(c => c.channelName === po.channel);
+    const actualBelowThreshold = config ? po.amount < config.minOrderThreshold : false;
+    const canMarkThreshold = poStatus === POStatus.NewPO && actualBelowThreshold;
+
+    const canCancel = (poStatus === POStatus.NewPO || poStatus === POStatus.BelowThreshold) && selectedCount === 0;
 
     return (
         <Fragment>
@@ -143,7 +157,17 @@ const OrderRow: React.FC<OrderRowProps> = ({
                 <td className="px-6 py-4 font-bold text-gray-900">{po.qty} / ₹{amountIncTax.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-gray-400">{effectiveDate}</td>
                 <td className="px-6 py-4 text-center sticky right-0 z-30 bg-white border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)]" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-3 min-w-[160px]">
+                    <div className="flex items-center justify-end gap-3 min-w-[200px]">
+                        {canMarkThreshold && (
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onMarkThreshold(); }}
+                                disabled={isMarkingThreshold}
+                                className="px-2 py-2 bg-orange-50 text-orange-600 hover:bg-orange-100 rounded-lg transition-all border border-orange-100"
+                                title={`Move to Below Threshold (Limit: ₹${config?.minOrderThreshold})`}
+                            >
+                                {isMarkingThreshold ? <RefreshIcon className="h-4 w-4 animate-spin"/> : <SortIcon className="h-4 w-4 rotate-90"/>}
+                            </button>
+                        )}
                         <button 
                             onClick={(e) => { e.stopPropagation(); onActionClick(); }}
                             disabled={isDisabled || isCancelling}
@@ -169,6 +193,15 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                             <InfoIcon className="h-4 w-4" /> View Details
                                         </button>
                                         
+                                        {canMarkThreshold && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onMarkThreshold(); }}
+                                                className="w-full text-left px-4 py-2.5 text-[11px] font-bold text-orange-600 hover:bg-orange-50 flex items-center gap-2"
+                                            >
+                                                <SortIcon className="h-4 w-4 rotate-90" /> Mark Below Threshold
+                                            </button>
+                                        )}
+
                                         {canCancel && (
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onCancel(); }}
@@ -269,6 +302,8 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                                             <span className="text-[9px] font-bold text-green-700 bg-green-100/50 px-2 py-0.5 rounded border border-green-200 uppercase">Pushed</span>
                                                         ) : poStatus === POStatus.Cancelled ? (
                                                             <span className="text-[9px] font-bold text-red-700 uppercase">Cancelled</span>
+                                                        ) : poStatus === POStatus.BelowThreshold ? (
+                                                            <span className="text-[9px] font-bold text-orange-700 uppercase">Below Threshold</span>
                                                         ) : (
                                                             <span className="text-gray-300 text-[10px] font-medium">-</span>
                                                         )}
@@ -283,7 +318,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                 {po.eeCustomerId ? (
                                     <button 
                                         onClick={onPush} 
-                                        disabled={selectedCount === 0 || isPushing} 
+                                        disabled={selectedCount === 0 || isPushing || poStatus === POStatus.BelowThreshold} 
                                         className={`flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl shadow-sm transition-all active:scale-95 ${selectedCount > 0 && !isPushing ? 'bg-partners-green hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed grayscale'}`}
                                     >
                                         <UploadIcon className="h-4 w-4" />
@@ -321,15 +356,17 @@ interface PoTableProps {
     onSync: () => void;
     isSyncing: boolean;
     inventoryItems?: InventoryItem[];
+    channelConfigs: ChannelConfig[];
 }
 
 const PoTable: React.FC<PoTableProps> = ({ 
-    activeFilter, setActiveFilter, purchaseOrders, tabCounts, onSync, isSyncing, addLog, addNotification 
+    activeFilter, setActiveFilter, purchaseOrders, tabCounts, onSync, isSyncing, addLog, addNotification, channelConfigs
 }) => {
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
     const [selectedPoItems, setSelectedPoItems] = useState<{ [key: string]: string[] }>({});
     const [pushingToEasyEcom, setPushingToEasyEcom] = useState<{ [key: string]: boolean }>({});
     const [cancellingPoId, setCancellingPoId] = useState<string | null>(null);
+    const [markingThresholdId, setMarkingThresholdId] = useState<string | null>(null);
     const [syncingZohoId, setSyncingZohoId] = useState<string | null>(null);
 
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
@@ -337,7 +374,7 @@ const PoTable: React.FC<PoTableProps> = ({
     const filterMenuRef = useRef<HTMLDivElement>(null);
 
     const tabs = [
-        { name: 'New POs' }, { name: 'Pushed POs' }, { name: 'Partially Pushed POs' }, { name: 'Cancelled POs' }, { name: 'All POs' }
+        { name: 'New POs' }, { name: 'Below Threshold POs' }, { name: 'Pushed POs' }, { name: 'Partially Pushed POs' }, { name: 'Cancelled POs' }, { name: 'All POs' }
     ];
 
     const uniqueChannels = useMemo(() => Array.from(new Set(purchaseOrders.map(p => p.channel))), [purchaseOrders]);
@@ -348,6 +385,7 @@ const PoTable: React.FC<PoTableProps> = ({
             orders = orders.filter(po => {
                 const status = getCalculatedStatus(po);
                 if (activeFilter === 'New POs') return status === POStatus.NewPO;
+                if (activeFilter === 'Below Threshold POs') return status === POStatus.BelowThreshold;
                 if (activeFilter === 'Pushed POs') return status === POStatus.Pushed;
                 if (activeFilter === 'Partially Pushed POs') return status === POStatus.PartiallyProcessed;
                 if (activeFilter === 'Cancelled POs') return status === POStatus.Cancelled;
@@ -428,15 +466,33 @@ const PoTable: React.FC<PoTableProps> = ({
         finally { setSyncingZohoId(null); }
     };
 
+    const handleThresholdAction = async (po: PurchaseOrder) => {
+        setMarkingThresholdId(po.id);
+        try {
+            const res = await updatePOStatus(po.poNumber, 'Below Threshold');
+            if (res.status === 'success') {
+                addNotification(`PO ${po.poNumber} marked as Below Threshold.`, 'success');
+                addLog('Threshold Update', `Moved PO ${po.poNumber} to Below Threshold`);
+                onSync();
+            } else {
+                addNotification('Update Failed: ' + res.message, 'error');
+            }
+        } catch (e) {
+            addNotification('Network error during threshold update.', 'error');
+        } finally {
+            setMarkingThresholdId(null);
+        }
+    };
+
     const handleCancelPoAction = async (po: PurchaseOrder) => {
         if (!window.confirm(`Are you sure you want to cancel PO ${po.poNumber}? This will mark it as Cancelled in the database.`)) return;
         setCancellingPoId(po.id);
         try {
-            const res = await cancelPurchaseOrder(po.poNumber);
+            const res = await updatePOStatus(po.poNumber, 'Cancelled');
             if (res.status === 'success') {
                 addNotification(`PO ${po.poNumber} cancelled successfully.`, 'success');
                 addLog('Cancel PO', `Marked PO ${po.poNumber} as Cancelled`);
-                onSync(); // Refresh and tab counts will update
+                onSync();
             } else {
                 addNotification('Cancel Failed: ' + res.message, 'error');
             }
@@ -454,15 +510,15 @@ const PoTable: React.FC<PoTableProps> = ({
                     {tabs.map(tab => (
                         <button key={tab.name} onClick={() => setActiveFilter(tab.name)}
                             className={`px-3 py-1.5 text-sm font-semibold rounded-full border transition-colors ${
-                                activeFilter === tab.name ? 'bg-partners-green text-white border-partners-green' : 'bg-white text-gray-600 border-partners-border hover:bg-gray-50'
+                                activeFilter === tab.name ? 'bg-partners-green text-white border-partners-green shadow-sm' : 'bg-white text-gray-600 border-partners-border hover:bg-gray-50'
                             }`}
                         >
-                            {tab.name} {tabCounts[tab.name] > 0 && <span className="ml-1 text-xs opacity-80">({tabCounts[tab.name]})</span>}
+                            {tab.name} {tabCounts[tab.name] > 0 && <span className="ml-1 text-[10px] opacity-70">({tabCounts[tab.name]})</span>}
                         </button>
                     ))}
                 </div>
                 <button onClick={onSync} disabled={isSyncing} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 active:scale-95 transition-all">
-                    <CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-bounce' : ''}`} /> Sync Data
+                    <CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} /> Sync Data
                 </button>
             </div>
 
@@ -520,6 +576,9 @@ const PoTable: React.FC<PoTableProps> = ({
                                     onTrackNotify={() => addNotification('Navigate to Sales Orders to track fulfillment.', 'info')}
                                     onCancel={() => handleCancelPoAction(po)}
                                     isCancelling={cancellingPoId === po.id}
+                                    onMarkThreshold={() => handleThresholdAction(po)}
+                                    isMarkingThreshold={markingThresholdId === po.id}
+                                    channelConfigs={channelConfigs}
                                 />
                             ))
                         )}

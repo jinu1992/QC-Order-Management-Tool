@@ -164,9 +164,10 @@ const BulkEmailModal: FC<BulkAppointmentModalProps> = ({ channel, pos, channelCo
 };
 
 const BlinkitAppointmentModal: FC<{ po: PurchaseOrder, onClose: () => void }> = ({ po, onClose }) => {
+    // Search for invoice info in items or use defaults
     const firstPushedItem = (po.items || []).find(i => !!i.invoiceNumber);
-    const invoiceNumber = firstPushedItem?.invoiceNumber || 'N/A';
-    const invoicePdfUrl = firstPushedItem?.invoicePdfUrl || 'N/A';
+    const invoiceNumber = firstPushedItem?.invoiceNumber || po.invoiceId || 'N/A';
+    const invoicePdfUrl = firstPushedItem?.invoicePdfUrl || po.poPdfUrl || 'N/A';
     const amountWithTax = (po.amount * 1.05).toFixed(0);
 
     return (
@@ -174,15 +175,27 @@ const BlinkitAppointmentModal: FC<{ po: PurchaseOrder, onClose: () => void }> = 
             <div className="bg-partners-gray-bg rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-white">
                 <div className="p-6 bg-white border-b border-gray-100 flex justify-between items-center">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-yellow-100"><span className="font-black italic text-xl">b</span></div>
-                        <div><h3 className="text-lg font-bold text-gray-800">Blinkit Appointment Helper</h3><p className="text-xs text-gray-500">Portal: <span className="font-bold text-partners-green">partnersbiz.com</span></p></div>
+                        <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-yellow-100">
+                            <span className="font-black italic text-xl">b</span>
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-800">Blinkit Appointment Helper</h3>
+                            <p className="text-xs text-gray-500">Portal: <span className="font-bold text-partners-green">partnersbiz.com</span></p>
+                        </div>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><XCircleIcon className="h-6 w-6 text-gray-400"/></button>
                 </div>
                 <div className="p-6 space-y-6">
                     <div className="bg-partners-light-green border-2 border-dashed border-partners-green/30 p-4 rounded-2xl flex gap-4 items-start">
                         <div className="bg-partners-green p-2 rounded-lg text-white"><CalendarIcon className="h-5 w-5" /></div>
-                        <div><p className="text-sm font-bold text-partners-green uppercase tracking-tight">Scheduling Instructions</p><p className="text-sm text-gray-700 mt-1 leading-relaxed">Take the <span className="font-bold underline">earliest available slot</span> on the suggested date in the portal.<br/><span className="text-red-600 font-extrabold uppercase">Important: Do not select Sundays.</span></p></div>
+                        <div>
+                            <p className="text-sm font-bold text-partners-green uppercase tracking-tight">Scheduling Instructions</p>
+                            <p className="text-sm text-gray-700 mt-1 leading-relaxed">
+                                Take the <span className="font-bold underline">earliest available slot</span> on the suggested date in the portal.
+                                <br/>
+                                <span className="text-red-600 font-extrabold uppercase">Important: Do not select Sundays.</span>
+                            </p>
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <CopyField label="PO Number" value={po.poNumber} icon={<ClipboardListIcon className="h-3 w-3"/>} />
@@ -190,10 +203,17 @@ const BlinkitAppointmentModal: FC<{ po: PurchaseOrder, onClose: () => void }> = 
                         <CopyField label="AWB Number" value={po.awb || 'N/A'} icon={<GlobeIcon className="h-3 w-3"/>} />
                         <CopyField label="Invoice Number" value={invoiceNumber} icon={<InvoiceIcon className="h-3 w-3"/>} />
                         <CopyField label="Total Amount (Inc. Tax)" value={`₹${amountWithTax}`} icon={<CurrencyIcon className="h-3 w-3"/>} />
-                        <div className="md:col-span-2"><CopyField label="Invoice PDF URL" value={invoicePdfUrl} icon={<ExternalLinkIcon className="h-3 w-3"/>} /></div>
+                        <div className="md:col-span-2">
+                            <CopyField label="Invoice PDF URL" value={invoicePdfUrl} icon={<ExternalLinkIcon className="h-3 w-3"/>} />
+                        </div>
                     </div>
                     <div className="flex flex-col items-center pt-2">
-                        <button onClick={() => window.open('https://partnersbiz.com', '_blank')} className="w-full py-4 bg-partners-green text-white font-bold rounded-2xl shadow-xl shadow-green-100 hover:bg-green-700 transition-all flex items-center justify-center gap-3 active:scale-95"><ExternalLinkIcon className="h-5 w-5" /> Open Blinkit Partners Portal</button>
+                        <button 
+                            onClick={() => window.open('https://partnersbiz.com', '_blank')} 
+                            className="w-full py-4 bg-partners-green text-white font-bold rounded-2xl shadow-xl shadow-green-100 hover:bg-green-700 transition-all flex items-center justify-center gap-3 active:scale-95"
+                        >
+                            <ExternalLinkIcon className="h-5 w-5" /> Open Blinkit Partners Portal
+                        </button>
                     </div>
                 </div>
             </div>
@@ -223,7 +243,6 @@ const CopyField = ({ label, value, icon }: { label: string, value: string, icon:
 const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchaseOrders: any, addLog: any, addNotification: any }> = ({ purchaseOrders, setPurchaseOrders, addLog, addNotification }) => {
     const [channelConfigs, setChannelConfigs] = useState<ChannelConfig[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    // Fix: Added channelConfig to bulkModal state type definition
     const [bulkModal, setBulkModal] = useState<{ isOpen: boolean, channel: string, pos: PurchaseOrder[], channelConfig?: ChannelConfig }>({ isOpen: false, channel: '', pos: [] });
     const [blinkitModal, setBlinkitModal] = useState<{ isOpen: boolean, po?: PurchaseOrder }>({ isOpen: false });
     const [activeTab, setActiveTab] = useState<'toBeScheduled' | 'open' | 'invoicePending' | 'serviced' | 'cancelled'>('toBeScheduled');
@@ -240,7 +259,13 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
     }, []);
 
     const getIsAppointmentTaken = (po: PurchaseOrder) => {
-        return !!po.awb || !!po.carrier || !!po.appointmentDate;
+        // For Blinkit, an appointment is only "taken" if we have a request date or confirmed date.
+        // AWBs and Carriers are prerequisites for Blinkit, so they don't count as "Scheduled" on their own.
+        if (po.channel.toLowerCase().includes('blinkit')) {
+            return !!po.appointmentDate || !!po.appointmentRequestDate;
+        }
+        // For other channels, any logistics activity might mean it's being handled.
+        return !!po.appointmentDate || !!po.appointmentRequestDate;
     };
 
     const relevantOrders = useMemo(() => {
@@ -252,9 +277,10 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
         // Inject 1 dummy entry for each active channel if none exist (for testing)
         if (filtered.length === 0 && channelConfigs.length > 0) {
             channelConfigs.filter(c => c.status === 'Active').forEach((config, idx) => {
+                const isBlinkit = config.channelName.toLowerCase().includes('blinkit');
                 filtered.push({
                     id: `dummy-${config.channelName}`,
-                    poNumber: `P-TEST-${idx + 100}`,
+                    poNumber: isBlinkit ? `BLKT-${idx + 5000}` : `P-TEST-${idx + 100}`,
                     status: POStatus.InTransit,
                     channel: config.channelName,
                     storeCode: `TEST-STORE-${config.channelName.slice(0, 3).toUpperCase()}`,
@@ -263,8 +289,16 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
                     orderDate: new Date().toLocaleDateString('en-GB'),
                     contactVerified: true,
                     awb: `AWB-TEST-${idx}`,
-                    carrier: 'Courier Vendor'
-                } as PurchaseOrder);
+                    carrier: 'Standard Courier',
+                    // Adding dummy item for the Blinkit helper to show invoice info
+                    items: isBlinkit ? [{
+                        articleCode: 'ART-001',
+                        qty: 100,
+                        itemName: 'Sample Product',
+                        invoiceNumber: `INV-${idx + 9000}`,
+                        invoicePdfUrl: 'https://example.com/invoice.pdf'
+                    }] : []
+                } as any as PurchaseOrder);
             });
         }
 
@@ -307,7 +341,6 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
             setBlinkitModal({ isOpen: true, po });
         } else {
             const config = channelConfigs.find(c => c.channelName === po.channel);
-            // Fix: setting bulkModal now works with channelConfig
             setBulkModal({ isOpen: true, channel: po.channel, pos: [po], channelConfig: config });
         }
     };
@@ -325,12 +358,11 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
         }
 
         if (firstChannel.toLowerCase().includes('blinkit')) {
-            alert("Bulk scheduling is currently done via individual helper for Blinkit due to portal integration requirements.");
+            alert("Blinkit appointments must be taken individually through the partners portal helper.");
             return;
         }
 
         const config = channelConfigs.find(c => c.channelName === firstChannel);
-        // Fix: setting bulkModal now works with channelConfig
         setBulkModal({ isOpen: true, channel: firstChannel, pos: selectedPos, channelConfig: config });
     };
 
@@ -349,7 +381,6 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
                 <BulkEmailModal 
                     channel={bulkModal.channel}
                     pos={bulkModal.pos}
-                    // Fix: Accessing channelConfig now works
                     channelConfig={bulkModal.channelConfig}
                     onClose={() => setBulkModal({ isOpen: false, channel: '', pos: [] })}
                     onSuccess={(sentIds) => {
@@ -436,15 +467,19 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
                                     tableOrders.map(po => {
                                         const isTaken = getIsAppointmentTaken(po);
                                         const isSelected = selectedPoIds.includes(po.id);
+                                        const isBlinkit = po.channel.toLowerCase().includes('blinkit');
+                                        
                                         return (
                                             <tr key={po.id} className={`hover:bg-gray-50/50 transition-colors ${isSelected ? 'bg-partners-light-green/20' : ''}`}>
                                                 {activeTab === 'toBeScheduled' && (
                                                     <td className="px-4 py-4 text-center">
                                                         <input 
                                                             type="checkbox" 
-                                                            className="rounded border-gray-300 text-partners-green focus:ring-partners-green"
+                                                            className={`rounded border-gray-300 text-partners-green focus:ring-partners-green ${isBlinkit ? 'opacity-30' : ''}`}
                                                             checked={isSelected}
-                                                            onChange={() => handleToggleSelect(po.id)}
+                                                            onChange={() => !isBlinkit && handleToggleSelect(po.id)}
+                                                            disabled={isBlinkit}
+                                                            title={isBlinkit ? "Blinkit orders must be scheduled individually" : ""}
                                                         />
                                                     </td>
                                                 )}
@@ -472,9 +507,9 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
                                                     {!isTaken ? (
                                                         <button 
                                                             onClick={() => handleSchedule(po)}
-                                                            className="px-6 py-1.5 border border-partners-green text-partners-green font-bold text-[11px] rounded hover:bg-partners-green hover:text-white transition-all active:scale-95"
+                                                            className={`px-6 py-1.5 border border-partners-green text-partners-green font-bold text-[11px] rounded hover:bg-partners-green hover:text-white transition-all active:scale-95 ${isBlinkit ? 'bg-yellow-50 border-yellow-400 text-yellow-700 hover:bg-yellow-400 hover:text-white' : ''}`}
                                                         >
-                                                            Schedule
+                                                            {isBlinkit ? 'Open Helper' : 'Schedule'}
                                                         </button>
                                                     ) : (
                                                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-center gap-1">

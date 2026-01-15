@@ -57,8 +57,8 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                     <div className="inline-flex items-center justify-center w-16 h-16 bg-partners-green rounded-2xl text-white font-bold text-3xl shadow-lg shadow-green-100 mb-4">
                         C
                     </div>
-                    <h1 className="text-3xl font-bold text-gray-900">Cubelelo Partners</h1>
-                    <p className="text-gray-500 mt-2 font-medium">Purchase Order Management Portal</p>
+                    <h1 className="text-3xl font-bold text-gray-900">Cubelelo B2B</h1>
+                    <p className="text-gray-500 mt-2 font-medium">Quick Commerce Portal</p>
                 </div>
 
                 <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100">

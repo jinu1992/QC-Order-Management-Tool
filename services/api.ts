@@ -345,12 +345,17 @@ export const requestZohoSync = async (contactId: string) => {
     return await response.json();
 };
 
-export const cancelPurchaseOrder = async (poNumber: string) => {
+export const updatePOStatus = async (poNumber: string, status: string) => {
     const response = await postToScript({ 
-        action: 'cancelPO', 
-        poNumber 
+        action: 'updatePOStatus', 
+        poNumber,
+        status
     });
     return await response.json();
+};
+
+export const cancelPurchaseOrder = async (poNumber: string) => {
+    return updatePOStatus(poNumber, 'Cancelled');
 };
 
 export const pushToEasyEcom = async (po: PurchaseOrder, selectedArticleCodes: string[]) => {

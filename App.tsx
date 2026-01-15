@@ -29,7 +29,7 @@ const defaultUser: User = {
 };
 
 const App: React.FC = () => {
-  const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [lastSynced, setLastSynced] = useState<number>(0);
   
@@ -57,6 +57,8 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setActiveView('Dashboard');
   };
+
+  const toggleSidebar = () => setSidebarOpen(!isSidebarOpen);
 
   const addLog = useCallback((action: string, details: string) => {
     const newLog: ActivityLog = {
@@ -120,7 +122,7 @@ const App: React.FC = () => {
 
   // Handle section-specific default filters when activeView changes
   useEffect(() => {
-    if (activeView === 'Purchase Orders' || activeView === 'Uploads') {
+    if (activeView === 'Purchase Orders') {
       setActiveFilter('New POs');
     } else if (activeView === 'Sales Orders') {
       setActiveFilter('All POs');
@@ -128,8 +130,11 @@ const App: React.FC = () => {
   }, [activeView]);
 
   const getCalculatedStatus = (po: PurchaseOrder): POStatus => {
+    const rawStatus = String(po.status || '').trim().toLowerCase();
+    if (rawStatus === 'cancelled') return POStatus.Cancelled;
+    if (rawStatus === 'below threshold') return POStatus.BelowThreshold;
+
     const items = po.items || [];
-    if (po.status === POStatus.Cancelled) return POStatus.Cancelled;
     const pushedCount = items.filter(i => !!i.eeOrderRefId).length;
     if (items.length > 0 && pushedCount === items.length) return POStatus.Pushed;
     if (pushedCount > 0) return POStatus.PartiallyProcessed;
@@ -149,10 +154,18 @@ const App: React.FC = () => {
   }, [purchaseOrders]);
 
   const tabCounts = useMemo(() => {
-    const counts = { 'All POs': purchaseOrders.length, 'New POs': 0, 'Pushed POs': 0, 'Partially Pushed POs': 0, 'Cancelled POs': 0 };
+    const counts = { 
+        'All POs': purchaseOrders.length, 
+        'New POs': 0, 
+        'Below Threshold POs': 0, 
+        'Pushed POs': 0, 
+        'Partially Pushed POs': 0, 
+        'Cancelled POs': 0 
+    };
     purchaseOrders.forEach(po => {
         const status = getCalculatedStatus(po);
         if (status === POStatus.NewPO) counts['New POs']++;
+        else if (status === POStatus.BelowThreshold) counts['Below Threshold POs']++;
         else if (status === POStatus.Pushed) counts['Pushed POs']++;
         else if (status === POStatus.PartiallyProcessed) counts['Partially Pushed POs']++;
         else if (status === POStatus.Cancelled) counts['Cancelled POs']++;
@@ -187,10 +200,9 @@ const App: React.FC = () => {
                 </div>
             );
         case 'Purchase Orders':
-        case 'Uploads':
             return (
                 <div className="p-4 sm:p-6 lg:p-8 flex-1">
-                    <PoTable activeFilter={activeFilter} setActiveFilter={setActiveFilter} purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} tabCounts={tabCounts} addLog={addLog} addNotification={addNotification} onSync={() => refreshData(true)} isSyncing={isLoading} />
+                    <PoTable activeFilter={activeFilter} setActiveFilter={setActiveFilter} purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} tabCounts={tabCounts} addLog={addLog} addNotification={addNotification} onSync={() => refreshData(true)} isSyncing={isLoading} channelConfigs={channelConfigs} />
                 </div>
             );
         case 'File Uploader':
@@ -216,15 +228,33 @@ const App: React.FC = () => {
   if (!isAuthChecked || !currentUser) return null;
 
   return (
-    <div className="flex h-screen bg-partners-gray-bg font-sans">
+    <div className="flex h-screen bg-partners-gray-bg font-sans overflow-hidden">
       <ToastContainer toasts={toasts} onRemove={removeToast} />
-      <div className={`fixed lg:relative inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out z-30`}>
-        <Sidebar activeView={activeView} setActiveView={setActiveView} currentUser={currentUser} permissions={rolePermissions} onLogout={handleLogout} />
+      
+      {/* Sidebar Container */}
+      <div 
+        className={`fixed lg:relative inset-y-0 left-0 z-30 transition-all duration-300 ease-in-out border-r border-partners-border bg-white ${
+          isSidebarOpen ? 'w-64 translate-x-0' : 'w-0 -translate-x-full'
+        }`}
+      >
+        <div className={`w-64 h-full ${!isSidebarOpen && 'invisible'}`}>
+          <Sidebar activeView={activeView} setActiveView={setActiveView} currentUser={currentUser} permissions={rolePermissions} onLogout={handleLogout} />
+        </div>
       </div>
-      <main className="flex-1 flex flex-col overflow-y-auto">
-        <Header notifications={notifications} onMarkRead={() => {}} onClearAll={() => {}} onViewLogs={() => { setActiveView('Admin'); setAdminTab('logs'); }} activeView={activeView} />
+
+      {/* Main Content Container */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto transition-all duration-300 ease-in-out">
+        <Header 
+          notifications={notifications} 
+          onMarkRead={() => {}} 
+          onClearAll={() => {}} 
+          onViewLogs={() => { setActiveView('Admin'); setAdminTab('logs'); }} 
+          activeView={activeView}
+          onToggleSidebar={toggleSidebar}
+        />
         {renderContent()}
       </main>
+
       <button className="fixed bottom-6 right-6 bg-green-600 text-white p-3 rounded-full shadow-lg hover:bg-green-700 transition-all hover:scale-110 flex items-center gap-2 z-40">
         <QuestionMarkCircleIcon className="h-6 w-6" />
         <span className="font-bold text-sm pr-1">Help</span>
