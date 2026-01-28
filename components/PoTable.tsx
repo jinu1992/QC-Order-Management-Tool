@@ -49,7 +49,7 @@ const getCalculatedStatus = (po: PurchaseOrder): POStatus => {
     if (rawStatus === 'below threshold') return POStatus.BelowThreshold;
 
     // 3. Manual statuses added for confirmation workflow
-    if (rawStatus === 'confirmed to send') return POStatus.ConfirmedToSend;
+    if (rawStatus === 'confirmed' || rawStatus === 'confirmed to send') return POStatus.ConfirmedToSend;
     if (rawStatus === 'waiting for confirmation') return POStatus.WaitingForConfirmation;
     
     // 4. Check item-level pushing status
@@ -212,7 +212,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                         {canConfirm && (
                                             <>
                                                 <button 
-                                                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onUpdateStatus('Confirmed to send'); }}
+                                                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onUpdateStatus('Confirmed'); }}
                                                     disabled={isUpdatingStatus}
                                                     className="w-full text-left px-4 py-2.5 text-[11px] font-bold text-partners-green hover:bg-green-50 flex items-center gap-2 border-t border-gray-50"
                                                 >

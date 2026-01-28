@@ -1,10 +1,9 @@
-
 export type ViewType = 'Dashboard' | 'Purchase Orders' | 'File Uploader' | 'POC Verification' | 'Appointments' | 'Sales Orders' | 'GRN / POD' | 'Reports' | 'Finance' | 'Inventory' | 'Admin';
 
 export enum POStatus {
     NewPO = 'New',
     WaitingForConfirmation = 'Waiting for Confirmation',
-    ConfirmedToSend = 'Confirmed to send',
+    ConfirmedToSend = 'Confirmed',
     BelowThreshold = 'Below Threshold',
     POCPending = 'POC Verification',
     AppointmentPending = 'Appointment to be taken',
@@ -81,6 +80,7 @@ export interface PurchaseOrder {
     dispatchDate?: string;
     boxes?: number;
     trackingUrl?: string;
+    // Fix: Single declaration for appointmentDate
     appointmentDate?: string;
     grnDate?: string;
     latestTrackingStatus?: string;
@@ -90,6 +90,7 @@ export interface PurchaseOrder {
     pocPhoneNumber?: string;
     contactVerified: boolean;
     pocEmail?: string;
+    // Fix: Single declaration for appointmentRequestDate
     appointmentRequestDate?: string;
     appointmentTime?: string;
     appointmentId?: string;
