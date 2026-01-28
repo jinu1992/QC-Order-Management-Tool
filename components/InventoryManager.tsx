@@ -1,8 +1,7 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { InventoryItem } from '../types';
 import { SearchIcon, FilterIcon, RefreshIcon, CubeIcon, PlusIcon, CheckCircleIcon, XCircleIcon, PencilIcon } from './icons/Icons';
-import { createInventoryItem, updateInventoryPrice } from '../services/api';
+import { createInventoryItem, updateInventoryPrice, syncInventoryFromEasyEcom } from '../services/api';
 
 interface InventoryManagerProps {
     addLog: (action: string, details: string) => void;
@@ -95,6 +94,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedChannel, setSelectedChannel] = useState<string>('All Channels');
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [isInternalSyncing, setIsInternalSyncing] = useState(false);
     
     // Price Editing State
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -115,6 +115,28 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
             return matchesSearch && matchesChannel;
         });
     }, [inventoryItems, searchQuery, selectedChannel]);
+
+    const handleInternalSync = async () => {
+        setIsInternalSyncing(true);
+        addLog('Inventory Sync', 'Triggering backend updateMasterSkuInventory...');
+        try {
+            const result = await syncInventoryFromEasyEcom();
+            if (result.status === 'success') {
+                addLog('Inventory Sync', 'Backend sync completed successfully. Reloading data...');
+                // Trigger the parent refresh to update the table
+                onSync();
+            } else {
+                alert('Backend sync failed: ' + result.message);
+                addLog('Sync Error', result.message || 'Unknown error');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Network error triggering inventory sync.');
+            addLog('Sync Error', 'Network error');
+        } finally {
+            setIsInternalSyncing(false);
+        }
+    };
 
     const handleCreateItem = async (newItem: any) => {
         // Optimistic UI update
@@ -174,6 +196,8 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
         }
     };
 
+    const totalLoading = isSyncing || isInternalSyncing;
+
     return (
         <div className="p-4 sm:p-6 lg:p-8 flex-1">
             {showCreateModal && (
@@ -198,12 +222,12 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
                         Create New Item
                     </button>
                     <button 
-                        onClick={onSync}
-                        disabled={isSyncing}
-                        className={`flex items-center gap-2 px-4 py-2.5 bg-partners-green text-white font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm ${isSyncing ? 'opacity-75 cursor-wait' : ''}`}
+                        onClick={handleInternalSync}
+                        disabled={totalLoading}
+                        className={`flex items-center gap-2 px-4 py-2.5 bg-partners-green text-white font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm ${totalLoading ? 'opacity-75 cursor-wait' : ''}`}
                     >
-                        <RefreshIcon className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                        {isSyncing ? 'Syncing...' : 'Sync Data'}
+                        <RefreshIcon className={`h-4 w-4 ${totalLoading ? 'animate-spin' : ''}`} />
+                        {totalLoading ? 'Syncing...' : 'Sync Data'}
                     </button>
                 </div>
             </header>
@@ -256,7 +280,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
                                     <td colSpan={8} className="px-6 py-10 text-center text-gray-500">
                                         <div className="flex flex-col items-center justify-center">
                                             <CubeIcon className="h-10 w-10 text-gray-300 mb-2" />
-                                            <p>{isSyncing ? 'Loading data...' : 'No inventory items found matching your filters.'}</p>
+                                            <p>{totalLoading ? 'Loading data...' : 'No inventory items found matching your filters.'}</p>
                                         </div>
                                     </td>
                                 </tr>

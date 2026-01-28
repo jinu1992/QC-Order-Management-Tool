@@ -104,11 +104,25 @@ function doPost(e) {
     if (action === 'syncZohoContactToEasyEcom') return handleSyncZohoContactToEasyEcom(data.contactId);
     if (action === 'syncSinglePO') return handleSyncSinglePO(data.poNumber);
     if (action === 'updatePOStatus') return updatePOStatus(data.poNumber, data.status);
+    if (action === 'syncInventory') return handleSyncInventory();
     
     return responseJSON({status: 'error', message: 'Invalid action: ' + action});
   } catch (error) {
     return responseJSON({status: 'error', message: "doPost Error: " + error.toString()});
   }
+}
+
+function handleSyncInventory() {
+    try {
+        if (typeof updateMasterSkuInventory === 'function') {
+            updateMasterSkuInventory();
+            return responseJSON({ status: 'success', message: 'Master SKU Inventory sync completed.' });
+        } else {
+            return responseJSON({ status: 'error', message: 'updateMasterSkuInventory function not found in GAS.' });
+        }
+    } catch (e) {
+        return responseJSON({ status: 'error', message: e.toString() });
+    }
 }
 
 function handleSyncZohoContacts() {

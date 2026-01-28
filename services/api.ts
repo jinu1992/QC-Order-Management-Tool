@@ -109,6 +109,11 @@ export const fetchInventoryFromSheet = async (): Promise<InventoryItem[]> => {
     } catch (error) { return []; }
 };
 
+export const syncInventoryFromEasyEcom = async (): Promise<{status: string, message?: string}> => {
+    const response = await postToScript({ action: 'syncInventory' });
+    return await response.json();
+};
+
 export const fetchPurchaseOrders = async (poNumber?: string): Promise<PurchaseOrder[]> => {
     try {
         const url = poNumber 
