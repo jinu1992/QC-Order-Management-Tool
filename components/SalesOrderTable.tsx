@@ -1,4 +1,3 @@
-
 import React, { useState, Fragment, useMemo, FC, useRef, useEffect } from 'react';
 import { type PurchaseOrder, type InventoryItem, POItem } from '../types';
 import { 
@@ -25,7 +24,7 @@ import {
     SearchIcon,
     FilterIcon
 } from './icons/Icons';
-import { createZohoInvoice, pushToNimbusPost } from '../services/api';
+import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder } from '../services/api';
 
 interface SalesOrderTableProps {
     activeFilter: string;
@@ -146,7 +145,7 @@ const parseDateString = (dateStr: string | undefined): number => {
     } catch (e) { return 0; }
 };
 
-const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilter, purchaseOrders, onSync, isSyncing, addLog, addNotification }) => {
+const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilter, purchaseOrders, setPurchaseOrders, onSync, isSyncing, addLog, addNotification }) => {
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
     const [isCreatingInvoice, setIsCreatingInvoice] = useState<string | null>(null);
     const [isPushingNimbus, setIsPushingNimbus] = useState<string | null>(null);
@@ -196,35 +195,16 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 
                 let displayStatus = 'Processing';
 
-                // PRIORITY 1: RETURNED / RTO (Check this first to prevent "Shipped" from taking precedence)
-                if (eeStatusLower === 'returned' || eeStatusLower === 'rto' || item.rtoStatus || po.rtoStatus) {
-                    displayStatus = 'Returned';
-                } 
-                // PRIORITY 2: CLOSED
-                else if (eeStatusLower === 'closed') {
-                    displayStatus = 'Closed';
-                } 
-                // PRIORITY 3: SHIPPED
-                else if (eeStatusLower === 'shipped' || maniDate) {
-                    displayStatus = 'Shipped';
-                } 
-                // PRIORITY 4: LABEL GENERATED
-                else if (awb) {
-                    displayStatus = 'Label Generated';
-                } 
-                // PRIORITY 5: INVOICED
+                if (eeStatusLower === 'returned' || eeStatusLower === 'rto' || item.rtoStatus || po.rtoStatus) displayStatus = 'Returned';
+                else if (eeStatusLower === 'closed') displayStatus = 'Closed';
+                else if (eeStatusLower === 'shipped' || maniDate) displayStatus = 'Shipped';
+                else if (awb) displayStatus = 'Label Generated';
                 else if (invNum) {
                     if (eeBoxCount === 0) displayStatus = 'Box Data Upload Pending';
                     else displayStatus = 'Invoiced';
                 } 
-                // PRIORITY 6: BATCHED
-                else if (batchDate || eeStatusLower === 'picking' || eeStatusLower === 'batched') {
-                    displayStatus = 'Batch Created';
-                } 
-                // PRIORITY 7: CONFIRMED
-                else if (eeStatusLower === 'confirmed' || eeStatusLower === 'open') {
-                    displayStatus = 'Confirmed';
-                }
+                else if (batchDate || eeStatusLower === 'picking' || eeStatusLower === 'batched') displayStatus = 'Batch Created';
+                else if (eeStatusLower === 'confirmed' || eeStatusLower === 'open') displayStatus = 'Confirmed';
 
                 if (!groups[refCode]) {
                     groups[refCode] = { 
@@ -267,9 +247,8 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 } else {
                     const curPo = String(po.id || '');
                     if (!groups[refCode].poReference.includes(curPo)) groups[refCode].poReference += `, ${curPo}`;
-                    
                     const statusRank = (s: string) => { 
-                        if (s === 'Returned') return 10; // Forced highest
+                        if (s === 'Returned') return 10;
                         if (s === 'Closed') return 8;
                         if (s === 'Shipped') return 7; 
                         if (s === 'Label Generated') return 6;
@@ -280,31 +259,14 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         return 1; 
                     };
                     if (statusRank(displayStatus) > statusRank(groups[refCode].status)) groups[refCode].status = displayStatus;
-                    
-                    if (groups[refCode].orderDate === 'N/A' && effectiveOrderDate !== 'N/A') {
-                        groups[refCode].orderDate = effectiveOrderDate;
-                    }
-
+                    if (groups[refCode].orderDate === 'N/A' && effectiveOrderDate !== 'N/A') groups[refCode].orderDate = effectiveOrderDate;
                     if (!groups[refCode].batchCreatedAt) groups[refCode].batchCreatedAt = batchDate;
                     if (!groups[refCode].invoiceDate) groups[refCode].invoiceDate = item.invoiceDate;
                     if (!groups[refCode].manifestDate) groups[refCode].manifestDate = maniDate;
-                    if (!groups[refCode].invoiceId) groups[refCode].invoiceId = item.invoiceId;
-                    if (!groups[refCode].invoiceStatus) groups[refCode].invoiceStatus = item.invoiceStatus;
                     if (!groups[refCode].invoiceNumber) groups[refCode].invoiceNumber = invNum;
-                    if (!groups[refCode].invoiceTotal) groups[refCode].invoiceTotal = item.invoiceTotal;
-                    if (!groups[refCode].invoiceUrl) groups[refCode].invoiceUrl = item.invoiceUrl;
-                    if (!groups[refCode].invoicePdfUrl) groups[refCode].invoicePdfUrl = item.invoicePdfUrl;
-                    
                     groups[refCode].boxCount = Math.max(groups[refCode].boxCount, eeBoxCount);
-                    
                     if (!groups[refCode].awb && awb) groups[refCode].awb = awb;
-                    if (!groups[refCode].carrier && carrier) groups[refCode].carrier = carrier;
                     if (!groups[refCode].trackingStatus && trackingStatus) groups[refCode].trackingStatus = trackingStatus;
-                    if (!groups[refCode].edd && item.edd) groups[refCode].edd = item.edd;
-                    if (!groups[refCode].deliveredDate && item.deliveredDate) groups[refCode].deliveredDate = item.deliveredDate;
-
-                    if (!groups[refCode].appointmentDate) groups[refCode].appointmentDate = po.appointmentDate;
-                    if (!groups[refCode].appointmentRequestDate) groups[refCode].appointmentRequestDate = po.appointmentRequestDate;
                 }
                 groups[refCode].items.push(item);
                 groups[refCode].qty += effectiveQty;
@@ -319,16 +281,12 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         });
 
         let filteredResults = results;
-        if (activeFilter !== 'All POs') {
-             filteredResults = results.filter(so => so.status === activeFilter);
-        }
-
+        if (activeFilter !== 'All POs') filteredResults = results.filter(so => so.status === activeFilter);
         Object.keys(columnFilters).forEach(key => {
             const val = columnFilters[key].toLowerCase();
             if (!val) return;
             filteredResults = filteredResults.filter(so => String((so as any)[key] || '').toLowerCase().includes(val));
         });
-
         filteredResults.sort((a, b) => parseDateString(b.orderDate) - parseDateString(a.orderDate));
         return { salesOrders: filteredResults, salesTabCounts: counts };
     }, [purchaseOrders, activeFilter, columnFilters]);
@@ -343,14 +301,28 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const handleCreateZohoInvoiceAction = async (eeRef: string) => {
+    const refreshSingleSOState = async (poReference: string) => {
+        const poIds = poReference.split(',').map(s => s.trim());
+        for (const id of poIds) {
+            try {
+                const updated = await fetchPurchaseOrder(id);
+                if (updated) {
+                    setPurchaseOrders(prev => prev.map(p => p.id === id ? updated : p));
+                }
+            } catch (e) {
+                console.error("Failed refresh for SO sub-po", id);
+            }
+        }
+    };
+
+    const handleCreateZohoInvoiceAction = async (eeRef: string, poRef: string) => {
         setIsCreatingInvoice(eeRef);
         try {
             const res = await createZohoInvoice(eeRef);
             if (res.status === 'success') {
                 addNotification(res.message || 'Invoice triggered.', 'success');
                 addLog('Invoice Creation', `EE Ref: ${eeRef}`);
-                onSync();
+                await refreshSingleSOState(poRef);
             } else {
                 addNotification('Error: ' + res.message, 'error');
             }
@@ -361,14 +333,14 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         }
     };
 
-    const handlePushToNimbusAction = async (eeRef: string) => {
+    const handlePushToNimbusAction = async (eeRef: string, poRef: string) => {
         setIsPushingNimbus(eeRef);
         try {
             const res = await pushToNimbusPost(eeRef);
             if (res.status === 'success') {
                 addNotification(res.message || 'Pushed to Nimbus.', 'success');
                 addLog('Nimbus Shipping', `EE Ref: ${eeRef}`);
-                onSync();
+                await refreshSingleSOState(poRef);
             } else {
                 addNotification('Shipping Error: ' + res.message, 'error');
             }
@@ -397,37 +369,11 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     const getPrimaryAction = (so: GroupedSalesOrder) => {
         const isExecuting = isCreatingInvoice === so.id || isPushingNimbus === so.id;
         const eeStatusLower = so.originalEeStatus.toLowerCase().trim();
-        
-        const canInvoice = !so.invoiceNumber && 
-            eeStatusLower !== 'open' &&
-            (eeStatusLower === 'confirmed' || so.status === 'Batch Created');
+        const canInvoice = !so.invoiceNumber && eeStatusLower !== 'open' && (eeStatusLower === 'confirmed' || so.status === 'Batch Created');
 
-        if (canInvoice) {
-            return { 
-                label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', 
-                color: 'bg-purple-600 text-white hover:bg-purple-700', 
-                onClick: () => handleCreateZohoInvoiceAction(so.id),
-                disabled: isExecuting
-            };
-        }
-        
-        if (so.status === 'Invoiced' && !so.awb && so.boxCount > 0) {
-            return { 
-                label: isPushingNimbus === so.id ? 'Shipping...' : 'Ship Nimbus', 
-                color: 'bg-blue-600 text-white hover:bg-blue-700', 
-                onClick: () => handlePushToNimbusAction(so.id),
-                disabled: isExecuting
-            };
-        }
-        
-        if (so.status === 'Label Generated') {
-            return { label: 'Track Dispatch', color: 'bg-amber-500 text-white hover:bg-amber-600', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
-        }
-        
-        if (so.awb) {
-            return { label: 'Track Order', color: 'bg-partners-green text-white hover:bg-green-700', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
-        }
-        
+        if (canInvoice) return { label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', color: 'bg-purple-600 text-white hover:bg-purple-700', onClick: () => handleCreateZohoInvoiceAction(so.id, so.poReference), disabled: isExecuting };
+        if (so.status === 'Invoiced' && !so.awb && so.boxCount > 0) return { label: isPushingNimbus === so.id ? 'Shipping...' : 'Ship Nimbus', color: 'bg-blue-600 text-white hover:bg-blue-700', onClick: () => handlePushToNimbusAction(so.id, so.poReference), disabled: isExecuting };
+        if (so.status === 'Label Generated' || so.awb) return { label: 'Track Order', color: 'bg-partners-green text-white hover:bg-green-700', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
         return { label: 'Details', color: 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
     };
 
@@ -437,16 +383,10 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
                 <div className="flex flex-wrap items-center gap-2">
                     {tabs.map(tab => (
-                        <button 
-                            key={tab.id} 
-                            onClick={() => setActiveFilter(tab.id)} 
-                            className={`px-3 py-1.5 text-sm font-semibold rounded-full border transition-all ${activeFilter === tab.id ? 'bg-partners-green text-white border-partners-green shadow-sm' : 'bg-white text-gray-600 border-partners-border hover:bg-gray-50'}`}
-                        >
-                            {tab.name} <span className="ml-1 text-[10px] opacity-70">({salesTabCounts[tab.id] || 0})</span>
-                        </button>
+                        <button key={tab.id} onClick={() => setActiveFilter(tab.id)} className={`px-3 py-1.5 text-sm font-semibold rounded-full border transition-all ${activeFilter === tab.id ? 'bg-partners-green text-white border-partners-green shadow-sm' : 'bg-white text-gray-600 border-partners-border hover:bg-gray-50'}`}>{tab.name} <span className="ml-1 text-[10px] opacity-70">({salesTabCounts[tab.id] || 0})</span></button>
                     ))}
                 </div>
-                <button onClick={onSync} disabled={isSyncing} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 transition-all"><CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} /> Sync Data</button>
+                <button onClick={onSync} disabled={isSyncing} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 transition-all"><CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} /> Sync All Data</button>
             </div>
 
             <div className="mt-6 overflow-x-auto border border-gray-100 rounded-xl shadow-inner max-h-[70vh]">
@@ -455,30 +395,13 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         <tr>
                             <th className="p-4 w-4 sticky left-0 bg-gray-50 z-30 border-r border-gray-100"></th>
                             <th className="px-6 py-3 text-blue-600 sticky left-12 bg-gray-50 z-30 border-r border-gray-100 min-w-[150px]">
-                                <div className="flex items-center gap-2">
-                                    SO ID (EE Ref)
-                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'id' ? null : 'id')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.id ? 'text-partners-green' : 'text-gray-400'}`}><SearchIcon className="h-3 w-3"/></button>
-                                </div>
-                                {activeFilterColumn === 'id' && (
-                                    <div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case">
-                                        <input type="text" autoFocus placeholder="Search ID..." className="w-full px-3 py-1.5 text-xs border rounded-md focus:ring-1 focus:ring-partners-green" value={columnFilters.id || ''} onChange={(e) => setColumnFilters({...columnFilters, id: e.target.value})} />
-                                    </div>
-                                )}
+                                <div className="flex items-center gap-2">SO ID (EE Ref)<button onClick={() => setActiveFilterColumn(activeFilterColumn === 'id' ? null : 'id')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.id ? 'text-partners-green' : 'text-gray-400'}`}><SearchIcon className="h-3 w-3"/></button></div>
+                                {activeFilterColumn === 'id' && (<div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case"><input type="text" autoFocus placeholder="Search ID..." className="w-full px-3 py-1.5 text-xs border rounded-md focus:ring-1 focus:ring-partners-green" value={columnFilters.id || ''} onChange={(e) => setColumnFilters({...columnFilters, id: e.target.value})} /></div>)}
                             </th>
                             <th className="px-6 py-3">EE Status</th>
                             <th className="px-6 py-3 min-w-[140px]">
-                                <div className="flex items-center gap-2">
-                                    Channel
-                                    <button onClick={() => setActiveFilterColumn(activeFilterColumn === 'channel' ? null : 'channel')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.channel ? 'text-partners-green' : 'text-gray-400'}`}><FilterIcon className="h-3 w-3"/></button>
-                                </div>
-                                {activeFilterColumn === 'channel' && (
-                                    <div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case">
-                                        <select className="w-full px-2 py-1.5 text-xs border rounded-md" value={columnFilters.channel || ''} onChange={(e) => setColumnFilters({...columnFilters, channel: e.target.value})}>
-                                            <option value="">All Channels</option>
-                                            {uniqueChannels.map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                    </div>
-                                )}
+                                <div className="flex items-center gap-2">Channel<button onClick={() => setActiveFilterColumn(activeFilterColumn === 'channel' ? null : 'channel')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.channel ? 'text-partners-green' : 'text-gray-400'}`}><FilterIcon className="h-3 w-3"/></button></div>
+                                {activeFilterColumn === 'channel' && (<div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case"><select className="w-full px-2 py-1.5 text-xs border rounded-md" value={columnFilters.channel || ''} onChange={(e) => setColumnFilters({...columnFilters, channel: e.target.value})}><option value="">All Channels</option>{uniqueChannels.map(c => <option key={c} value={c}>{c}</option>)}</select></div>)}
                             </th>
                             <th className="px-6 py-3">Store</th>
                             <th className="px-6 py-3">Qty / Total</th>
@@ -500,31 +423,14 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                         <tr className={`border-b hover:bg-gray-50 cursor-pointer ${isExpanded ? 'bg-gray-50' : 'bg-white'}`} onClick={() => setExpandedRowId(isExpanded ? null : so.id)}>
                                             <td className="p-4 text-center sticky left-0 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]"><div className="text-gray-400 hover:text-partners-green">{isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}</div></td>
                                             <td className="px-6 py-4 font-bold text-blue-600 whitespace-nowrap sticky left-12 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">{so.id}</td>
-                                            <td className="px-6 py-4">
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                                    so.status === 'Returned' ? 'bg-red-100 text-red-700' :
-                                                    so.status === 'Shipped' ? 'bg-emerald-100 text-emerald-700' : 
-                                                    so.status === 'Label Generated' ? 'bg-amber-100 text-amber-700' :
-                                                    so.status === 'Box Data Upload Pending' ? 'bg-red-50 text-red-700 border border-red-100' :
-                                                    so.status === 'Invoiced' ? 'bg-indigo-100 text-indigo-700' : 
-                                                    'bg-blue-100 text-blue-700'
-                                                }`}>
-                                                    {so.status}
-                                                </span>
-                                            </td>
+                                            <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${so.status === 'Returned' ? 'bg-red-100 text-red-700' : so.status === 'Shipped' ? 'bg-emerald-100 text-emerald-700' : so.status === 'Label Generated' ? 'bg-amber-100 text-amber-700' : so.status === 'Box Data Upload Pending' ? 'bg-red-50 text-red-700 border border-red-100' : so.status === 'Invoiced' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>{so.status}</span></td>
                                             <td className="px-6 py-4">{so.channel}</td>
                                             <td className="px-6 py-4">{so.storeCode}</td>
                                             <td className="px-6 py-4 font-medium text-gray-900">{so.qty} / ₹{totalAmountIncTax.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-gray-400">{so.orderDate}</td>
                                             <td className="px-6 py-4 text-center sticky right-0 z-10 bg-inherit border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)]" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex items-center justify-center gap-2">
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); action.onClick?.(); }} 
-                                                        disabled={action.disabled}
-                                                        className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap ${action.color} ${action.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        {action.label}
-                                                    </button>
+                                                    <button onClick={(e) => { e.stopPropagation(); action.onClick?.(); }} disabled={action.disabled} className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap ${action.color} ${action.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>{action.label}</button>
                                                     <button className="text-gray-400 hover:text-gray-600 p-1"><DotsVerticalIcon className="h-4 w-4" /></button>
                                                 </div>
                                             </td>
@@ -557,19 +463,8 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                             <InvoiceIcon className="h-8 w-8 text-purple-200 mb-2" />
                                                                             <p className="text-xs font-bold text-purple-400 uppercase">No Invoice Generated</p>
                                                                             {(!so.invoiceNumber && so.originalEeStatus.toLowerCase().trim() !== 'open' && (so.originalEeStatus.toLowerCase().trim() === 'confirmed' || so.status === 'Batch Created')) ? (
-                                                                                <button 
-                                                                                    onClick={() => handleCreateZohoInvoiceAction(so.id)} 
-                                                                                    disabled={!!isCreatingInvoice} 
-                                                                                    className="mt-4 px-4 py-2 bg-purple-600 text-white text-[11px] font-bold rounded-lg shadow-sm hover:bg-purple-700 flex items-center gap-2 transition-all active:scale-95"
-                                                                                >
-                                                                                    {isCreatingInvoice === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <PlusIcon className="h-3 w-3" />}
-                                                                                    {isCreatingInvoice === so.id ? 'Creating...' : 'Create Zoho Invoice'}
-                                                                                </button>
-                                                                            ) : (
-                                                                                <p className="mt-3 text-[10px] text-gray-400 italic bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
-                                                                                    {so.originalEeStatus.toLowerCase().trim() === 'open' ? 'Awaiting Confirmation (Status: Open)' : 'Pending Picking/Batching in EasyEcom'}
-                                                                                </p>
-                                                                            )}
+                                                                                <button onClick={() => handleCreateZohoInvoiceAction(so.id, so.poReference)} disabled={!!isCreatingInvoice} className="mt-4 px-4 py-2 bg-purple-600 text-white text-[11px] font-bold rounded-lg shadow-sm hover:bg-purple-700 flex items-center gap-2 transition-all active:scale-95">{isCreatingInvoice === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <PlusIcon className="h-3 w-3" />}{isCreatingInvoice === so.id ? 'Creating...' : 'Create Zoho Invoice'}</button>
+                                                                            ) : (<p className="mt-3 text-[10px] text-gray-400 italic bg-gray-100 px-3 py-1 rounded-full border border-gray-200">{so.originalEeStatus.toLowerCase().trim() === 'open' ? 'Awaiting Confirmation (Status: Open)' : 'Pending Picking/Batching in EasyEcom'}</p>)}
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -580,46 +475,21 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                             </div>
                                                         </div>
                                                         <div className="pt-6 border-t border-gray-100">
-                                                            <div className="flex justify-between items-center mb-4"><h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><GlobeIcon className="h-4 w-4 text-blue-600" /> Logistics & Shipment Status</h4>{(so.invoiceNumber && !so.awb && so.boxCount > 0) && <button onClick={() => handlePushToNimbusAction(so.id)} disabled={!!isPushingNimbus} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95">{isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}{isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post'}</button>}</div>
+                                                            <div className="flex justify-between items-center mb-4"><h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><GlobeIcon className="h-4 w-4 text-blue-600" /> Logistics & Shipment Status</h4>{(so.invoiceNumber && !so.awb && so.boxCount > 0) && <button onClick={() => handlePushToNimbusAction(so.id, so.poReference)} disabled={!!isPushingNimbus} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95">{isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}{isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post'}</button>}</div>
                                                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                                                                 <div className={`p-4 rounded-xl border transition-all ${so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{so.boxCount || 0}</p></div></div></div>
-                                                                
-                                                                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-                                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase mb-2">Appointment Date</p>
-                                                                    <div className="flex flex-col h-full">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <CalendarIcon className={`h-4 w-4 ${so.appointmentDate ? 'text-indigo-600' : 'text-gray-300'}`} />
-                                                                            <p className={`text-sm font-bold ${so.appointmentDate ? 'text-indigo-700' : 'text-gray-400'}`}>
-                                                                                {so.appointmentDate || so.appointmentRequestDate || 'Pending'}
-                                                                            </p>
-                                                                        </div>
-                                                                        <p className="text-[9px] text-indigo-400 font-medium mt-1 uppercase tracking-tighter">
-                                                                            {so.appointmentDate ? 'Confirmed' : so.appointmentRequestDate ? 'Requested' : 'To be Scheduled'}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-
+                                                                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100"><p className="text-[10px] font-bold text-indigo-400 uppercase mb-2">Appointment Date</p><div className="flex flex-col h-full"><div className="flex items-center gap-2"><CalendarIcon className={`h-4 w-4 ${so.appointmentDate ? 'text-indigo-600' : 'text-gray-300'}`} /><p className={`text-sm font-bold ${so.appointmentDate ? 'text-indigo-700' : 'text-gray-400'}`}>{so.appointmentDate || so.appointmentRequestDate || 'Pending'}</p></div><p className="text-[9px] text-indigo-400 font-medium mt-1 uppercase tracking-tighter">{so.appointmentDate ? 'Confirmed' : so.appointmentRequestDate ? 'Requested' : 'To be Scheduled'}</p></div></div>
                                                                 {so.awb ? <>
                                                                 <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 col-span-1 md:col-span-1"><div className="flex flex-col h-full justify-between"><div><p className="text-[10px] font-bold text-blue-400 uppercase">Carrier & AWB</p><p className="text-sm font-bold text-gray-900 truncate">{so.carrier || 'Pending'}</p><p className="text-xs font-mono text-blue-600 font-bold tracking-wider">{so.awb}</p></div><span className={`mt-2 w-fit px-2 py-0.5 rounded text-[10px] font-bold border ${so.trackingStatus?.toLowerCase().includes('deliv') ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{so.trackingStatus || 'In-Transit'}</span></div></div>
                                                                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-100"><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Delivery SLA</p><div className="space-y-3"><div><p className="text-[9px] font-bold text-gray-400">Exp Delivery Date</p><p className="text-sm font-bold text-partners-green">{so.edd || 'TBD'}</p></div><div><p className="text-[9px] font-bold text-gray-400">Delivered Date</p><p className="text-sm font-bold text-gray-800">{so.deliveredDate || '-'}</p></div></div></div>
                                                                 <div className={`p-4 rounded-xl border ${so.status === 'Returned' ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Return Status (RTO)</p>{so.status === 'Returned' ? <div className="space-y-2"><p className="text-xs font-bold text-red-600">{so.rtoStatus || 'Returned'}</p><div><p className="text-[9px] font-bold text-gray-400">Return AWB</p><p className="text-xs font-mono font-bold text-red-600">{so.rtoAwb || 'N/A'}</p></div></div> : <div className="flex flex-col items-center justify-center py-2"><CheckCircleIcon className="h-6 w-6 text-gray-200" /><p className="text-[10px] font-bold text-gray-400 mt-1 uppercase">No Returns</p></div>}</div>
                                                             </> : <div className="md:col-span-3 p-12 border-2 border-dashed border-gray-100 rounded-2xl flex flex-col items-center justify-center text-center">{!so.invoiceNumber ? <><LockClosedIcon className="h-8 w-8 text-gray-200 mb-3" /><p className="text-sm font-bold text-gray-400 uppercase">Logistics Pending Invoice Generation</p></> : so.boxCount === 0 ? <><div className="p-4 bg-red-50 rounded-xl border border-red-100 mb-3"><CubeIcon className="h-8 w-8 text-red-500 mx-auto mb-2" /><p className="text-sm font-bold text-red-600 uppercase">Missing Physical Box Data</p></div><p className="text-xs text-red-400">Update box count in the backend to enable shipping.</p></> : <><TruckIcon className="h-8 w-8 text-blue-200 mb-3" /><p className="text-sm font-bold text-blue-400 uppercase">Invoice Ready for Shipment</p><p className="text-xs text-blue-300 mt-1">Generate AWB by clicking the 'Ship with Nimbus' button above.</p></>}</div>}
                                                             </div>
-                                                            {so.awb && so.channel.toLowerCase().includes('blinkit') && so.status !== 'Shipped' && so.status !== 'Returned' && (
-                                                                <div className="mt-4 bg-yellow-50 border border-yellow-200 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-2">
-                                                                    <div className="flex items-center gap-3"><div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center text-white shadow-lg"><span className="font-black italic text-xl">b</span></div><div><p className="text-xs font-bold text-yellow-800 uppercase">Blinkit Portal Action Required</p><p className="text-[10px] text-yellow-600 font-medium">AWB assigned. Generate appointment pass before dispatching.</p></div></div>
-                                                                    <button onClick={(e) => { e.stopPropagation(); setBlinkitModal({ isOpen: true, so }); }} className="px-6 py-2.5 bg-yellow-500 text-white text-[11px] font-bold rounded-xl shadow-md hover:bg-yellow-600 transition-all flex items-center gap-2"><CalendarIcon className="h-4 w-4" />Get Appointment Details</button>
-                                                                </div>
-                                                            )}
+                                                            {so.awb && so.channel.toLowerCase().includes('blinkit') && so.status !== 'Shipped' && so.status !== 'Returned' && (<div className="mt-4 bg-yellow-50 border border-yellow-200 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-2"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center text-white shadow-lg"><span className="font-black italic text-xl">b</span></div><div><p className="text-xs font-bold text-yellow-800 uppercase">Blinkit Portal Action Required</p><p className="text-[10px] text-yellow-600 font-medium">AWB assigned. Generate appointment pass before dispatching.</p></div></div><button onClick={(e) => { e.stopPropagation(); setBlinkitModal({ isOpen: true, so }); }} className="px-6 py-2.5 bg-yellow-500 text-white text-[11px] font-bold rounded-xl shadow-md hover:bg-yellow-600 transition-all flex items-center gap-2"><CalendarIcon className="h-4 w-4" />Get Appointment Details</button></div>)}
                                                         </div>
                                                         <div>
                                                             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><DotsVerticalIcon className="h-4 w-4 text-partners-green rotate-90" /> SKU Breakdown</h4>
-                                                            <div className="overflow-x-auto border rounded-xl">
-                                                                <table className="w-full text-[11px] text-left">
-                                                                    <thead className="bg-gray-50 text-gray-500 uppercase"><tr><th className="py-2.5 px-4">Item Name / SKU</th><th className="py-2.5 text-right w-24">EE Item Qty</th><th className="py-2.5 text-right w-24 text-red-600">Cancelled</th><th className="py-2.5 text-right w-24 text-green-600">Shipped</th><th className="py-2.5 text-right w-24 text-orange-600">Returned</th><th className="py-2.5 px-4 text-center w-28">Item status</th></tr></thead>
-                                                                    <tbody className="divide-y divide-gray-100">{so.items.map((item, idx) => (<tr key={idx} className="hover:bg-gray-50"><td className="py-3 px-4"><p className="font-bold text-gray-800">{item.itemName}</p><p className="text-[10px] text-gray-400 font-mono">{item.masterSku || item.articleCode}</p></td><td className="py-3 text-right font-bold text-gray-900">{item.itemQuantity || 0}</td><td className="py-3 text-right text-red-600 font-bold">{item.cancelledQuantity || 0}</td><td className="py-3 text-right text-green-600 font-bold">{item.shippedQuantity || 0}</td><td className="py-3 text-right text-orange-600 font-bold">{item.returnedQuantity || 0}</td><td className="py-3 px-4 text-center"><span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase inline-block w-full ${item.itemStatus?.toLowerCase().includes('ship') ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{item.itemStatus || 'Processing'}</span></td></tr>))}</tbody>
-                                                                </table>
-                                                            </div>
+                                                            <div className="overflow-x-auto border rounded-xl"><table className="w-full text-[11px] text-left"><thead className="bg-gray-50 text-gray-500 uppercase"><tr><th className="py-2.5 px-4">Item Name / SKU</th><th className="py-2.5 text-right w-24">EE Item Qty</th><th className="py-2.5 text-right w-24 text-red-600">Cancelled</th><th className="py-2.5 text-right w-24 text-green-600">Shipped</th><th className="py-2.5 text-right w-24 text-orange-600">Returned</th><th className="py-2.5 px-4 text-center w-28">Item status</th></tr></thead><tbody className="divide-y divide-gray-100">{so.items.map((item, idx) => (<tr key={idx} className="hover:bg-gray-50"><td className="py-3 px-4"><p className="font-bold text-gray-800">{item.itemName}</p><p className="text-[10px] text-gray-400 font-mono">{item.masterSku || item.articleCode}</p></td><td className="py-3 text-right font-bold text-gray-900">{item.itemQuantity || 0}</td><td className="py-3 text-right text-red-600 font-bold">{item.cancelledQuantity || 0}</td><td className="py-3 text-right text-green-600 font-bold">{item.shippedQuantity || 0}</td><td className="py-3 text-right text-orange-600 font-bold">{item.returnedQuantity || 0}</td><td className="py-3 px-4 text-center"><span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase inline-block w-full ${item.itemStatus?.toLowerCase().includes('ship') ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{item.itemStatus || 'Processing'}</span></td></tr>))}</tbody></table></div>
                                                         </div>
                                                     </div>
                                                 </td>

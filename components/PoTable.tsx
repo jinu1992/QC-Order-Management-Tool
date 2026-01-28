@@ -20,7 +20,7 @@ import {
     SortIcon,
     ClockIcon
 } from './icons/Icons';
-import { pushToEasyEcom, requestZohoSync, syncZohoContacts, updatePOStatus } from '../services/api';
+import { pushToEasyEcom, requestZohoSync, syncZohoContacts, updatePOStatus, fetchPurchaseOrder, syncSinglePO } from '../services/api';
 
 // --- Utilities ---
 
@@ -132,12 +132,12 @@ const OrderRow: React.FC<OrderRowProps> = ({
         actionColor = 'bg-partners-blue text-white hover:bg-blue-700';
         onActionClick = onTrackNotify;
     } else if (!po.zohoContactId) {
-        actionLabel = isSyncingZoho ? 'Syncing...' : 'Sync Zoho';
+        actionLabel = isSyncingZoho ? 'Syncing...' : 'Sync Zoho ID';
         actionColor = 'bg-indigo-600 text-white hover:bg-indigo-700';
         onActionClick = onSyncZoho;
         isDisabled = isSyncingZoho;
     } else if (!po.eeCustomerId) {
-        actionLabel = isSyncingEE ? 'Syncing...' : 'Sync to EE';
+        actionLabel = isSyncingEE ? 'Syncing...' : 'Map to EasyEcom';
         actionColor = 'bg-blue-600 text-white hover:bg-blue-700';
         onActionClick = onSyncEE;
         isDisabled = isSyncingEE;
@@ -364,7 +364,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                         className={`flex items-center gap-2 px-6 py-3 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-sm active:scale-95 transition-all ${isSyncingEE ? 'opacity-50 cursor-not-allowed' : ''}`}
                                     >
                                         <RefreshIcon className={`h-4 w-4 ${isSyncingEE ? 'animate-spin' : ''}`} />
-                                        {isSyncingEE ? 'Syncing EE...' : 'Sync Zoho to EasyEcom'}
+                                        {isSyncingEE ? 'Syncing EE...' : 'Map to EasyEcom'}
                                     </button>
                                 ) : (
                                     <button 
@@ -402,7 +402,7 @@ interface PoTableProps {
 }
 
 const PoTable: React.FC<PoTableProps> = ({ 
-    activeFilter, setActiveFilter, purchaseOrders, tabCounts, onSync, isSyncing, addLog, addNotification, channelConfigs
+    activeFilter, setActiveFilter, purchaseOrders, setPurchaseOrders, tabCounts, onSync, isSyncing, addLog, addNotification, channelConfigs
 }) => {
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
     const [selectedPoItems, setSelectedPoItems] = useState<{ [key: string]: string[] }>({});
@@ -461,6 +461,17 @@ const PoTable: React.FC<PoTableProps> = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const refreshSinglePOState = async (poNumber: string) => {
+        try {
+            const updatedPO = await fetchPurchaseOrder(poNumber);
+            if (updatedPO) {
+                setPurchaseOrders(prev => prev.map(p => p.poNumber === poNumber ? updatedPO : p));
+            }
+        } catch (e) {
+            console.error("Failed to fetch updated single PO", e);
+        }
+    };
+
     const handleItemToggle = (poId: string, articleCode: string) => {
         setSelectedPoItems(prev => {
             const current = prev[poId] || [];
@@ -491,7 +502,7 @@ const PoTable: React.FC<PoTableProps> = ({
                 addNotification(res.message, 'success');
                 addLog('EasyEcom Sync', `Pushed ${selected.length} items from PO ${po.poNumber}`);
                 setSelectedPoItems(prev => ({ ...prev, [po.id]: [] }));
-                onSync();
+                await refreshSinglePOState(po.poNumber);
             } else { addNotification('Failed: ' + res.message, 'error'); }
         } catch (e) { addNotification('Network error.', 'error'); }
         finally { setPushingToEasyEcom(prev => ({ ...prev, [po.id]: false })); }
@@ -503,7 +514,7 @@ const PoTable: React.FC<PoTableProps> = ({
             const res = await syncZohoContacts();
             if (res.status === 'success') {
                 addNotification('Zoho contacts sync initiated.', 'success');
-                onSync();
+                await refreshSinglePOState(po.poNumber);
             } else { addNotification(`Error: ${res.message}`, 'error'); }
         } catch (e) { addNotification('Sync Exception.', 'error'); }
         finally { setSyncingZohoId(null); }
@@ -516,7 +527,7 @@ const PoTable: React.FC<PoTableProps> = ({
             const res = await requestZohoSync(po.zohoContactId);
             if (res.status === 'success') {
                 addNotification('Customer mapped to EasyEcom successfully.', 'success');
-                onSync();
+                await refreshSinglePOState(po.poNumber);
             } else { addNotification(`Error: ${res.message}`, 'error'); }
         } catch (e) { addNotification('EE Sync Exception.', 'error'); }
         finally { setSyncingEEId(null); }
@@ -529,7 +540,7 @@ const PoTable: React.FC<PoTableProps> = ({
             if (res.status === 'success') {
                 addNotification(`PO ${po.poNumber} marked as Below Threshold.`, 'success');
                 addLog('Threshold Update', `Moved PO ${po.poNumber} to Below Threshold`);
-                onSync();
+                await refreshSinglePOState(po.poNumber);
             } else {
                 addNotification('Update Failed: ' + res.message, 'error');
             }
@@ -548,7 +559,7 @@ const PoTable: React.FC<PoTableProps> = ({
             if (res.status === 'success') {
                 addNotification(`PO ${po.poNumber} cancelled successfully.`, 'success');
                 addLog('Cancel PO', `Marked PO ${po.poNumber} as Cancelled`);
-                onSync();
+                await refreshSinglePOState(po.poNumber);
             } else {
                 addNotification('Cancel Failed: ' + res.message, 'error');
             }
@@ -566,7 +577,7 @@ const PoTable: React.FC<PoTableProps> = ({
             if (res.status === 'success') {
                 addNotification(`PO ${po.poNumber} status updated to ${newStatus}.`, 'success');
                 addLog('Status Update', `Manually updated PO ${po.poNumber} to ${newStatus}`);
-                onSync();
+                await refreshSinglePOState(po.poNumber);
             } else {
                 addNotification('Update Failed: ' + res.message, 'error');
             }
@@ -592,7 +603,7 @@ const PoTable: React.FC<PoTableProps> = ({
                     ))}
                 </div>
                 <button onClick={onSync} disabled={isSyncing} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 active:scale-95 transition-all">
-                    <CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} /> Sync Data
+                    <CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} /> Sync All Data
                 </button>
             </div>
 

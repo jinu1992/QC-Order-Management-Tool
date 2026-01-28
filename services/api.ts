@@ -109,13 +109,22 @@ export const fetchInventoryFromSheet = async (): Promise<InventoryItem[]> => {
     } catch (error) { return []; }
 };
 
-export const fetchPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
+export const fetchPurchaseOrders = async (poNumber?: string): Promise<PurchaseOrder[]> => {
     try {
-        const response = await fetch(`${API_URL}?action=getPurchaseOrders`, { method: 'GET', redirect: 'follow', mode: 'cors' });
+        const url = poNumber 
+            ? `${API_URL}?action=getPurchaseOrders&poNumber=${encodeURIComponent(poNumber)}`
+            : `${API_URL}?action=getPurchaseOrders`;
+            
+        const response = await fetch(url, { method: 'GET', redirect: 'follow', mode: 'cors' });
         const json = await response.json();
         if (json.status === 'success' && Array.isArray(json.data)) return transformSheetDataToPOs(json.data);
         return [];
     } catch (error) { return []; }
+};
+
+export const fetchPurchaseOrder = async (poNumber: string): Promise<PurchaseOrder | null> => {
+    const orders = await fetchPurchaseOrders(poNumber);
+    return orders.length > 0 ? orders[0] : null;
 };
 
 export const fetchStorePocMappings = async (): Promise<StorePocMapping[]> => {
@@ -338,6 +347,11 @@ export const createEasyEcomCustomer = async (details: any) => {
 
 export const syncZohoContacts = async () => {
     const response = await postToScript({ action: 'syncZohoContacts' });
+    return await response.json();
+};
+
+export const syncSinglePO = async (poNumber: string) => {
+    const response = await postToScript({ action: 'syncSinglePO', poNumber });
     return await response.json();
 };
 

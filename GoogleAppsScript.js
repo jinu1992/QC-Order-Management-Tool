@@ -6,13 +6,15 @@ const SHEET_UPLOAD_LOGS = "Upload_Logs";
 const SHEET_PO_REPOSITORY = "PO_Repository";
 const LOG_DEBUG_SHEET = "System_Logs";
 
-// Ensure this matches your actual Spreadsheet ID
-const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet() ? SpreadsheetApp.getActiveSpreadsheet().getId() : "10pI-pT9-7l3mD9XqR9vLwT3KxY9Mv6A8fN2u-b0vA4I"; // Fallback ID if needed
+const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet() ? SpreadsheetApp.getActiveSpreadsheet().getId() : "10pI-pT9-7l3mD9XqR9vLwT3KxY9Mv6A8fN2u-b0vA4I"; 
 
 // Handle GET requests
 function doGet(e) {
   const action = e.parameter.action;
-  if (action === 'getPurchaseOrders') return getPurchaseOrders();
+  if (action === 'getPurchaseOrders') {
+    const poNumber = e.parameter.poNumber;
+    return getPurchaseOrders(poNumber);
+  }
   if (action === 'getInventory') return getInventory();
   if (action === 'getChannelConfigs') return getChannelConfigs();
   if (action === 'getSystemConfig') return getSystemConfig();
@@ -21,20 +23,36 @@ function doGet(e) {
   return responseJSON({status: 'error', message: 'Invalid action'});
 }
 
-function getPurchaseOrders() {
-  try {
-    if (typeof fetchEasyEcomShipments === 'function') {
-      fetchEasyEcomShipments();
-    }
-  } catch (e) {
-    Logger.log("fetchEasyEcomShipments error: " + e.toString());
-  }
-
+/**
+ * Returns PO data from sheet. Optimized for single PO lookup.
+ */
+function getPurchaseOrders(poNumberFilter) {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = ss.getSheetByName(SHEET_PO_DB);
   if (!sheet) return responseJSON({status: 'error', message: `Sheet "${SHEET_PO_DB}" not found.`});
   
-  const data = getDataAsJSON(sheet);
+  const rawData = sheet.getDataRange().getValues();
+  if (rawData.length <= 1) return responseJSON({status: 'success', data: []});
+  
+  const headers = rawData[0];
+  let poNumIdx = headers.indexOf("PO Number");
+  if (poNumIdx === -1) poNumIdx = headers.indexOf("PO_Number");
+
+  const data = [];
+  for (let i = 1; i < rawData.length; i++) {
+    const row = rawData[i];
+    if (row.every(cell => cell === "")) continue;
+    
+    // If filter is provided, skip non-matching rows
+    if (poNumberFilter && poNumIdx !== -1 && String(row[poNumIdx]).trim() !== String(poNumberFilter).trim()) {
+        continue;
+    }
+
+    const obj = {};
+    for (let j = 0; j < headers.length; j++) { obj[headers[j]] = row[j]; }
+    data.push(obj);
+  }
+  
   return responseJSON({status: 'success', data: data});
 }
 
@@ -83,7 +101,8 @@ function doPost(e) {
     if (action === 'createZohoInvoice') return handleCreateZohoInvoice(data.eeReferenceCode);
     if (action === 'pushToNimbus') return handlePushToNimbus(data.eeReferenceCode);
     if (action === 'syncZohoContacts') return handleSyncZohoContacts();
-    if (action === 'syncZohoContactToEasyEcom') return responseJSON({status: 'success', message: 'Sync triggered'});
+    if (action === 'syncZohoContactToEasyEcom') return handleSyncZohoContactToEasyEcom(data.contactId);
+    if (action === 'syncSinglePO') return handleSyncSinglePO(data.poNumber);
     if (action === 'updatePOStatus') return updatePOStatus(data.poNumber, data.status);
     
     return responseJSON({status: 'error', message: 'Invalid action: ' + action});
@@ -103,6 +122,33 @@ function handleSyncZohoContacts() {
   } catch (e) {
     return responseJSON({status: 'error', message: e.toString()});
   }
+}
+
+function handleSyncZohoContactToEasyEcom(contactId) {
+  try {
+    if (typeof syncZohoContactToEasyEcom === 'function') {
+      syncZohoContactToEasyEcom(contactId);
+      return responseJSON({status: 'success', message: 'Zoho contact sync to EasyEcom triggered.'});
+    } else {
+      return responseJSON({status: 'error', message: 'syncZohoContactToEasyEcom function not found.'});
+    }
+  } catch (e) {
+    return responseJSON({status: 'error', message: e.toString()});
+  }
+}
+
+function handleSyncSinglePO(poNumber) {
+    try {
+        if (typeof fetchSingleEasyEcomShipment === 'function') {
+            fetchSingleEasyEcomShipment(poNumber);
+            return responseJSON({ status: 'success', message: `Sync for PO ${poNumber} triggered.` });
+        } else {
+            // Fallback: If single fetch not available, we can't do much without triggering full sync which we want to avoid
+            return responseJSON({ status: 'error', message: 'Targeted PO sync function not found in GAS.' });
+        }
+    } catch (e) {
+        return responseJSON({ status: 'error', message: e.toString() });
+    }
 }
 
 /**
@@ -136,9 +182,6 @@ function logFileUpload(data) {
   }
 }
 
-/**
- * Specifically parses Amazon B2B CSV and updates PO_Repository
- */
 function processAmazonB2BShipment(base64Data, fileName, userEmail) {
   if (!base64Data) return { status: 'error', message: 'No file data received.' };
   
@@ -153,45 +196,29 @@ function processAmazonB2BShipment(base64Data, fileName, userEmail) {
     const shipmentIdIdx = headers.indexOf("Shipment ID");
     
     if (fcIdIdx === -1 || shipmentIdIdx === -1) {
-      return { status: 'error', message: 'Missing required columns: "FC ID" or "Shipment ID". Headers found: ' + headers.join(', ') };
+      return { status: 'error', message: 'Missing required columns: "FC ID" or "Shipment ID".' };
     }
     
     const repoSheet = getOrCreateSheet(SHEET_PO_REPOSITORY, [
       "Date Received", "Channel Name", "Sender Email", "Subject", "File Name", "Drive Link", "Category", "PO Number", "Store Code", "Status"
     ]);
     
-    // Extract unique shipments
     const uniqueShipments = new Map();
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const shipmentId = String(row[shipmentIdIdx]).trim();
       const fcId = String(row[fcIdIdx]).trim();
-      
-      if (shipmentId && fcId) {
-        uniqueShipments.set(shipmentId, fcId);
-      }
+      if (shipmentId && fcId) uniqueShipments.set(shipmentId, fcId);
     }
     
     const dateStr = new Date().toLocaleDateString('en-GB');
     let count = 0;
-    
     uniqueShipments.forEach((fcId, shipmentId) => {
-      repoSheet.appendRow([
-        dateStr,
-        "Amazon",
-        userEmail,
-        "Amazon B2B Shipment Upload",
-        fileName,
-        "-",
-        "B2B Shipment",
-        shipmentId,
-        "Amazon_" + fcId,
-        "New"
-      ]);
+      repoSheet.appendRow([dateStr, "Amazon", userEmail, "Amazon B2B Shipment Upload", fileName, "-", "B2B Shipment", shipmentId, "Amazon_" + fcId, "New"]);
       count++;
     });
     
-    return { status: 'success', message: `Successfully processed ${count} unique shipments from ${fileName}.` };
+    return { status: 'success', message: `Successfully processed ${count} unique shipments.` };
     
   } catch (e) {
     return { status: 'error', message: 'Parsing Error: ' + e.toString() };
@@ -226,10 +253,7 @@ function updatePOStatus(poNumber, status) {
     if (updateCount === 0) return responseJSON({ status: 'error', message: `PO ${poNumber} not found.` });
 
     SpreadsheetApp.flush();
-    return responseJSON({ 
-      status: 'success', 
-      message: `Successfully marked PO ${poNumber} as ${status}.` 
-    });
+    return responseJSON({ status: 'success', message: `Successfully marked PO ${poNumber} as ${status}.` });
   } catch (err) {
     return responseJSON({ status: 'error', message: err.toString() });
   }
