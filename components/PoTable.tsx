@@ -85,19 +85,21 @@ interface OrderRowProps {
     channelConfigs: ChannelConfig[];
     onUpdateStatus: (status: string) => void;
     isUpdatingStatus: boolean;
+    onRefresh: () => void;
+    isRefreshing: boolean;
 }
 
 const OrderRow: React.FC<OrderRowProps> = ({ 
     po, isExpanded, onToggle, isSelected, onItemToggle, onSelectAll, 
     isPushing, onPush, isSyncingZoho, onSyncZoho, isSyncingEE, onSyncEE, onTrackNotify, onCancel, isCancelling,
-    onMarkThreshold, isMarkingThreshold, channelConfigs, onUpdateStatus, isUpdatingStatus
+    onMarkThreshold, isMarkingThreshold, channelConfigs, onUpdateStatus, isUpdatingStatus, onRefresh, isRefreshing
 }) => {
     const poStatus = getCalculatedStatus(po);
     const amountIncTax = po.amount * 1.05;
     const items = po.items || [];
     const selectableItems = items.filter(i => !i.eeOrderRefId && (i.fulfillableQty ?? 0) >= i.qty);
     const selectedCount = items.filter(i => isSelected(i.articleCode)).length;
-    const effectiveDate = po.eeOrderDate || 'N/A';
+    const effectiveDate = po.orderDate || 'N/A';
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -235,6 +237,14 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                             </button>
                                         )}
 
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onRefresh(); }}
+                                            disabled={isRefreshing}
+                                            className="w-full text-left px-4 py-2.5 text-[11px] font-bold text-blue-600 hover:bg-blue-50 flex items-center gap-2 border-t border-gray-50"
+                                        >
+                                            <RefreshIcon className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} /> {isRefreshing ? 'Syncing...' : 'Targeted Sync (Fast)'}
+                                        </button>
+
                                         {canCancel && (
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onCancel(); }}
@@ -256,10 +266,20 @@ const OrderRow: React.FC<OrderRowProps> = ({
                     <td colSpan={8} className="px-4 py-8 sm:px-12">
                         <div className="bg-white border border-partners-border rounded-xl p-6 space-y-6 shadow-sm ring-1 ring-black/5">
                             <div className="pb-6 border-b border-gray-100">
-                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><CalendarIcon className="h-4 w-4 text-blue-500" /> Fulfillment Ref</h4>
+                                <div className="flex justify-between items-start mb-4">
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><CalendarIcon className="h-4 w-4 text-blue-500" /> Fulfillment Ref</h4>
+                                    <button 
+                                        onClick={onRefresh}
+                                        disabled={isRefreshing}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
+                                    >
+                                        <RefreshIcon className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                                        {isRefreshing ? 'Refreshing...' : 'Refresh This Order Only'}
+                                    </button>
+                                </div>
                                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
                                     <div><p className="text-[10px] uppercase font-bold text-gray-400">PO Ref</p><p className="text-xs font-bold text-partners-green truncate">{po.poNumber}</p></div>
-                                    <div><p className="text-[10px] uppercase font-bold text-gray-400">Order Date (EE)</p><p className="text-xs font-bold text-gray-700">{po.eeOrderDate || 'N/A'}</p></div>
+                                    <div><p className="text-[10px] uppercase font-bold text-gray-400">PO Date</p><p className="text-xs font-bold text-gray-700">{po.orderDate || 'N/A'}</p></div>
                                     <div><p className="text-[10px] uppercase font-bold text-gray-400">EasyEcom Cust ID</p><p className={`text-xs font-bold ${po.eeCustomerId ? 'text-blue-600' : 'text-red-500 italic'}`}>{po.eeCustomerId || 'Not Mapped'}</p></div>
                                     <div><p className="text-[10px] uppercase font-bold text-gray-400">Expiry Date</p><p className="text-xs font-bold text-red-600">{po.poExpiryDate || 'N/A'}</p></div>
                                     <div><p className="text-[10px] uppercase font-bold text-gray-400">PO PDF</p>{po.poPdfUrl ? <a href={po.poPdfUrl} target="_blank" rel="noopener noreferrer" className="text-partners-green hover:underline flex items-center gap-1 text-xs font-bold mt-0.5"><PaperclipIcon className="h-3 w-3" /> View PO PDF</a> : <p className="text-xs text-gray-300 font-bold italic mt-0.5">Not Uploaded</p>}</div>
@@ -412,6 +432,7 @@ const PoTable: React.FC<PoTableProps> = ({
     const [syncingZohoId, setSyncingZohoId] = useState<string | null>(null);
     const [syncingEEId, setSyncingEEId] = useState<string | null>(null);
     const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+    const [refreshingPoId, setRefreshingPoId] = useState<string | null>(null);
 
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
     const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
@@ -442,10 +463,10 @@ const PoTable: React.FC<PoTableProps> = ({
             orders = orders.filter(po => String((po as any)[key] || '').toLowerCase().includes(val));
         });
         
-        // Sorting by newest EE Order Date first (Descending)
+        // Sorting by newest PO Date first (Descending)
         orders.sort((a, b) => {
-            const dateA = parseDate(a.eeOrderDate);
-            const dateB = parseDate(b.eeOrderDate);
+            const dateA = parseDate(a.orderDate);
+            const dateB = parseDate(b.orderDate);
             return dateB - dateA;
         });
         return orders;
@@ -462,13 +483,19 @@ const PoTable: React.FC<PoTableProps> = ({
     }, []);
 
     const refreshSinglePOState = async (poNumber: string) => {
+        setRefreshingPoId(poNumber);
         try {
+            // First trigger targeted fetch from external APIs if needed
+            await syncSinglePO(poNumber);
+            // Then fetch the actual sheet data for this row
             const updatedPO = await fetchPurchaseOrder(poNumber);
             if (updatedPO) {
                 setPurchaseOrders(prev => prev.map(p => p.poNumber === poNumber ? updatedPO : p));
             }
         } catch (e) {
             console.error("Failed to fetch updated single PO", e);
+        } finally {
+            setRefreshingPoId(null);
         }
     };
 
@@ -637,7 +664,7 @@ const PoTable: React.FC<PoTableProps> = ({
                             </th>
                             <th className="px-6 py-4">Store</th>
                             <th className="px-6 py-4">Qty / Total</th>
-                            <th className="px-6 py-4">Order Date (EE)</th>
+                            <th className="px-6 py-4">PO Date</th>
                             <th className="px-6 py-4 text-center sticky right-0 bg-gray-50 z-30 border-l border-gray-100 min-w-[200px]">Action</th>
                         </tr>
                     </thead>
@@ -668,6 +695,8 @@ const PoTable: React.FC<PoTableProps> = ({
                                     channelConfigs={channelConfigs}
                                     onUpdateStatus={(s) => handleUpdateStatusAction(po, s)}
                                     isUpdatingStatus={updatingStatusId === po.id}
+                                    onRefresh={() => refreshSinglePOState(po.poNumber)}
+                                    isRefreshing={refreshingPoId === po.poNumber}
                                 />
                             ))
                         )}

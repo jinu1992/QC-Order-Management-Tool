@@ -24,7 +24,7 @@ import {
     SearchIcon,
     FilterIcon
 } from './icons/Icons';
-import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder } from '../services/api';
+import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO } from '../services/api';
 
 interface SalesOrderTableProps {
     activeFilter: string;
@@ -149,6 +149,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
     const [isCreatingInvoice, setIsCreatingInvoice] = useState<string | null>(null);
     const [isPushingNimbus, setIsPushingNimbus] = useState<string | null>(null);
+    const [isRefreshingSo, setIsRefreshingSo] = useState<string | null>(null);
     const [blinkitModal, setBlinkitModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
@@ -302,17 +303,22 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     }, []);
 
     const refreshSingleSOState = async (poReference: string) => {
+        setIsRefreshingSo(poReference);
         const poIds = poReference.split(',').map(s => s.trim());
         for (const id of poIds) {
             try {
+                // First trigger targeted fetch from external APIs
+                await syncSinglePO(id);
+                // Then fetch the actual sheet data for this row
                 const updated = await fetchPurchaseOrder(id);
                 if (updated) {
-                    setPurchaseOrders(prev => prev.map(p => p.id === id ? updated : p));
+                    setPurchaseOrders(prev => prev.map(p => p.poNumber === id ? updated : p));
                 }
             } catch (e) {
                 console.error("Failed refresh for SO sub-po", id);
             }
         }
+        setIsRefreshingSo(null);
     };
 
     const handleCreateZohoInvoiceAction = async (eeRef: string, poRef: string) => {
@@ -417,6 +423,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 const isExpanded = expandedRowId === so.id;
                                 const totalAmountIncTax = so.amount * 1.05;
                                 const action = getPrimaryAction(so);
+                                const isRefreshing = isRefreshingSo === so.poReference;
 
                                 return (
                                     <Fragment key={so.id}>
@@ -441,7 +448,17 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                     <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-8">
                                                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
                                                             <div>
-                                                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><CalendarIcon className="h-4 w-4 text-blue-500" /> Fulfillment Ref</h4>
+                                                                <div className="flex justify-between items-center mb-4">
+                                                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><CalendarIcon className="h-4 w-4 text-blue-500" /> Fulfillment Ref</h4>
+                                                                    <button 
+                                                                        onClick={() => refreshSingleSOState(so.poReference)}
+                                                                        disabled={isRefreshing}
+                                                                        className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
+                                                                    >
+                                                                        <RefreshIcon className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                                                                        {isRefreshing ? 'Refreshing...' : 'Refresh Targeted'}
+                                                                    </button>
+                                                                </div>
                                                                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 p-4 bg-gray-50 rounded-lg border border-gray-100">
                                                                     <div><p className="text-[10px] uppercase font-bold text-gray-400">PO Ref</p><p className="text-xs font-bold text-partners-green truncate" title={so.poReference}>{so.poReference}</p></div>
                                                                     <div><p className="text-[10px] uppercase font-bold text-gray-400">Order Date (EE)</p><p className="text-xs font-bold text-gray-700">{so.orderDate || 'N/A'}</p></div>
