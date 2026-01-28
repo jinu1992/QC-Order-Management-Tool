@@ -1,4 +1,3 @@
-
 const SHEET_PO_DB = "PO_Database";
 const SHEET_INVENTORY = "Master_SKU_Mapping";
 const SHEET_CHANNEL_CONFIG = "Channel_Config";
@@ -83,12 +82,26 @@ function doPost(e) {
     if (action === 'sendAppointmentEmail') return sendAppointmentEmail(data);
     if (action === 'createZohoInvoice') return handleCreateZohoInvoice(data.eeReferenceCode);
     if (action === 'pushToNimbus') return handlePushToNimbus(data.eeReferenceCode);
+    if (action === 'syncZohoContacts') return handleSyncZohoContacts();
     if (action === 'syncZohoContactToEasyEcom') return responseJSON({status: 'success', message: 'Sync triggered'});
     if (action === 'updatePOStatus') return updatePOStatus(data.poNumber, data.status);
     
     return responseJSON({status: 'error', message: 'Invalid action: ' + action});
   } catch (error) {
     return responseJSON({status: 'error', message: "doPost Error: " + error.toString()});
+  }
+}
+
+function handleSyncZohoContacts() {
+  try {
+    if (typeof syncZohoContacts === 'function') {
+      syncZohoContacts();
+      return responseJSON({status: 'success', message: 'Zoho contacts sync initiated.'});
+    } else {
+      return responseJSON({status: 'error', message: 'syncZohoContacts function not implemented in GAS.'});
+    }
+  } catch (e) {
+    return responseJSON({status: 'error', message: e.toString()});
   }
 }
 

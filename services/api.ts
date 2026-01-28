@@ -1,4 +1,3 @@
-
 import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePocMapping, User, UploadMetadata } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbwBDSNnN_xKlZc4cTwwKthd7-Nq8IE83csNdNHODP55EnVEz-gfWzcvzYdxGeNbJSPzZQ/exec'; 
@@ -334,6 +333,11 @@ export const saveSystemConfig = async (config: any) => {
 
 export const createEasyEcomCustomer = async (details: any) => {
     const response = await postToScript({ action: 'createEasyEcomCustomer', ...details });
+    return await response.json();
+};
+
+export const syncZohoContacts = async () => {
+    const response = await postToScript({ action: 'syncZohoContacts' });
     return await response.json();
 };
 

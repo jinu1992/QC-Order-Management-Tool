@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, Fragment, useMemo, useRef } from 'react';
 import { POStatus, type PurchaseOrder, POItem, InventoryItem, ChannelConfig } from '../types';
 import StatusBadge from './StatusBadge';
@@ -21,7 +20,7 @@ import {
     SortIcon,
     ClockIcon
 } from './icons/Icons';
-import { pushToEasyEcom, requestZohoSync, updatePOStatus } from '../services/api';
+import { pushToEasyEcom, requestZohoSync, syncZohoContacts, updatePOStatus } from '../services/api';
 
 // --- Utilities ---
 
@@ -76,6 +75,8 @@ interface OrderRowProps {
     onPush: () => void;
     isSyncingZoho: boolean;
     onSyncZoho: () => void;
+    isSyncingEE: boolean;
+    onSyncEE: () => void;
     onTrackNotify: () => void;
     onCancel: () => void;
     isCancelling: boolean;
@@ -88,7 +89,7 @@ interface OrderRowProps {
 
 const OrderRow: React.FC<OrderRowProps> = ({ 
     po, isExpanded, onToggle, isSelected, onItemToggle, onSelectAll, 
-    isPushing, onPush, isSyncingZoho, onSyncZoho, onTrackNotify, onCancel, isCancelling,
+    isPushing, onPush, isSyncingZoho, onSyncZoho, isSyncingEE, onSyncEE, onTrackNotify, onCancel, isCancelling,
     onMarkThreshold, isMarkingThreshold, channelConfigs, onUpdateStatus, isUpdatingStatus
 }) => {
     const poStatus = getCalculatedStatus(po);
@@ -130,11 +131,16 @@ const OrderRow: React.FC<OrderRowProps> = ({
         actionLabel = 'Track in Sales';
         actionColor = 'bg-partners-blue text-white hover:bg-blue-700';
         onActionClick = onTrackNotify;
-    } else if (!po.eeCustomerId) {
+    } else if (!po.zohoContactId) {
         actionLabel = isSyncingZoho ? 'Syncing...' : 'Sync Zoho';
         actionColor = 'bg-indigo-600 text-white hover:bg-indigo-700';
         onActionClick = onSyncZoho;
         isDisabled = isSyncingZoho;
+    } else if (!po.eeCustomerId) {
+        actionLabel = isSyncingEE ? 'Syncing...' : 'Sync to EE';
+        actionColor = 'bg-blue-600 text-white hover:bg-blue-700';
+        onActionClick = onSyncEE;
+        isDisabled = isSyncingEE;
     } else if (poStatus === POStatus.NewPO || poStatus === POStatus.PartiallyProcessed || poStatus === POStatus.ConfirmedToSend || poStatus === POStatus.WaitingForConfirmation) {
         actionLabel = isPushing ? 'Pushing...' : 'Push to EE';
         actionColor = 'bg-partners-green text-white hover:bg-green-700';
@@ -164,7 +170,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                 <td className="px-6 py-4 text-gray-500">{po.storeCode}</td>
                 <td className="px-6 py-4 font-bold text-gray-900">{po.qty} / ₹{amountIncTax.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-gray-400">{effectiveDate}</td>
-                <td className="px-6 py-4 text-center sticky right-0 z-30 bg-white border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)]" onClick={(e) => e.stopPropagation()}>
+                <td className={`px-6 py-4 text-center sticky right-0 bg-white border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)] ${isMenuOpen ? 'z-50' : 'z-30'}`} onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-3 min-w-[200px]">
                         {canMarkThreshold && (
                             <button 
@@ -183,10 +189,10 @@ const OrderRow: React.FC<OrderRowProps> = ({
                         >
                             {actionLabel}
                         </button>
-                        <div className="relative" ref={menuRef}>
+                        <div className="relative flex-shrink-0" ref={menuRef}>
                             <button 
                                 onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }}
-                                className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-full transition-colors"
+                                className={`text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-full transition-colors ${isMenuOpen ? 'bg-gray-100 text-gray-600' : ''}`}
                             >
                                 <DotsVerticalIcon className="h-5 w-5" />
                             </button>
@@ -351,14 +357,23 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                         <UploadIcon className="h-4 w-4" />
                                         {isPushing ? 'Processing...' : `Push ${selectedCount > 0 ? selectedCount : ''} Items`}
                                     </button>
+                                ) : po.zohoContactId ? (
+                                    <button 
+                                        onClick={onSyncEE} 
+                                        disabled={isSyncingEE}
+                                        className={`flex items-center gap-2 px-6 py-3 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-sm active:scale-95 transition-all ${isSyncingEE ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
+                                        <RefreshIcon className={`h-4 w-4 ${isSyncingEE ? 'animate-spin' : ''}`} />
+                                        {isSyncingEE ? 'Syncing EE...' : 'Sync Zoho to EasyEcom'}
+                                    </button>
                                 ) : (
                                     <button 
                                         onClick={onSyncZoho} 
                                         disabled={isSyncingZoho}
-                                        className={`flex items-center gap-2 px-6 py-3 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-sm active:scale-95 transition-all ${isSyncingZoho ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        className={`flex items-center gap-2 px-6 py-3 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-sm active:scale-95 transition-all ${isSyncingZoho ? 'opacity-50 cursor-not-allowed' : ''}`}
                                     >
-                                        <BuildingIcon className="h-4 w-4" />
-                                        {isSyncingZoho ? 'Syncing...' : 'Sync Zoho to EasyEcom'}
+                                        <RefreshIcon className={`h-4 w-4 ${isSyncingZoho ? 'animate-spin' : ''}`} />
+                                        {isSyncingZoho ? 'Syncing Zoho...' : 'Sync Zoho Contacts'}
                                     </button>
                                 )}
                             </div>
@@ -395,6 +410,7 @@ const PoTable: React.FC<PoTableProps> = ({
     const [cancellingPoId, setCancellingPoId] = useState<string | null>(null);
     const [markingThresholdId, setMarkingThresholdId] = useState<string | null>(null);
     const [syncingZohoId, setSyncingZohoId] = useState<string | null>(null);
+    const [syncingEEId, setSyncingEEId] = useState<string | null>(null);
     const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
 
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
@@ -482,16 +498,28 @@ const PoTable: React.FC<PoTableProps> = ({
     };
 
     const handleSyncZohoAction = async (po: PurchaseOrder) => {
-        if (!po.zohoContactId) { addNotification('Missing Zoho Contact ID.', 'warning'); return; }
         setSyncingZohoId(po.id);
         try {
-            const res = await requestZohoSync(po.zohoContactId);
+            const res = await syncZohoContacts();
             if (res.status === 'success') {
-                addNotification('Customer mapped successfully.', 'success');
+                addNotification('Zoho contacts sync initiated.', 'success');
                 onSync();
             } else { addNotification(`Error: ${res.message}`, 'error'); }
         } catch (e) { addNotification('Sync Exception.', 'error'); }
         finally { setSyncingZohoId(null); }
+    };
+
+    const handleSyncEEAction = async (po: PurchaseOrder) => {
+        if (!po.zohoContactId) { addNotification('Missing Zoho Contact ID.', 'warning'); return; }
+        setSyncingEEId(po.id);
+        try {
+            const res = await requestZohoSync(po.zohoContactId);
+            if (res.status === 'success') {
+                addNotification('Customer mapped to EasyEcom successfully.', 'success');
+                onSync();
+            } else { addNotification(`Error: ${res.message}`, 'error'); }
+        } catch (e) { addNotification('EE Sync Exception.', 'error'); }
+        finally { setSyncingEEId(null); }
     };
 
     const handleThresholdAction = async (po: PurchaseOrder) => {
@@ -619,6 +647,8 @@ const PoTable: React.FC<PoTableProps> = ({
                                     onPush={() => handlePushAction(po)}
                                     isSyncingZoho={syncingZohoId === po.id}
                                     onSyncZoho={() => handleSyncZohoAction(po)}
+                                    isSyncingEE={syncingEEId === po.id}
+                                    onSyncEE={() => handleSyncEEAction(po)}
                                     onTrackNotify={() => addNotification('Navigate to Sales Orders to track fulfillment.', 'info')}
                                     onCancel={() => handleCancelPoAction(po)}
                                     isCancelling={cancellingPoId === po.id}
@@ -630,7 +660,7 @@ const PoTable: React.FC<PoTableProps> = ({
                                 />
                             ))
                         )}
-                        <tr className="h-24"><td colSpan={8}></td></tr>
+                        <tr className="h-32"><td colSpan={8}></td></tr>
                     </tbody>
                 </table>
             </div>
