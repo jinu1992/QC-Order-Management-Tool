@@ -485,9 +485,9 @@ const PoTable: React.FC<PoTableProps> = ({
     const refreshSinglePOState = async (poNumber: string) => {
         setRefreshingPoId(poNumber);
         try {
-            // First trigger targeted fetch from external APIs if needed
+            // Background sync from external APIs
             await syncSinglePO(poNumber);
-            // Then fetch the actual sheet data for this row
+            // Fetch updated sheet data
             const updatedPO = await fetchPurchaseOrder(poNumber);
             if (updatedPO) {
                 setPurchaseOrders(prev => prev.map(p => p.poNumber === poNumber ? updatedPO : p));
@@ -529,7 +529,8 @@ const PoTable: React.FC<PoTableProps> = ({
                 addNotification(res.message, 'success');
                 addLog('EasyEcom Sync', `Pushed ${selected.length} items from PO ${po.poNumber}`);
                 setSelectedPoItems(prev => ({ ...prev, [po.id]: [] }));
-                await refreshSinglePOState(po.poNumber);
+                // Immediate local refresh
+                refreshSinglePOState(po.poNumber);
             } else { addNotification('Failed: ' + res.message, 'error'); }
         } catch (e) { addNotification('Network error.', 'error'); }
         finally { setPushingToEasyEcom(prev => ({ ...prev, [po.id]: false })); }
@@ -541,7 +542,7 @@ const PoTable: React.FC<PoTableProps> = ({
             const res = await syncZohoContacts();
             if (res.status === 'success') {
                 addNotification('Zoho contacts sync initiated.', 'success');
-                await refreshSinglePOState(po.poNumber);
+                refreshSinglePOState(po.poNumber);
             } else { addNotification(`Error: ${res.message}`, 'error'); }
         } catch (e) { addNotification('Sync Exception.', 'error'); }
         finally { setSyncingZohoId(null); }
@@ -554,7 +555,7 @@ const PoTable: React.FC<PoTableProps> = ({
             const res = await requestZohoSync(po.zohoContactId);
             if (res.status === 'success') {
                 addNotification('Customer mapped to EasyEcom successfully.', 'success');
-                await refreshSinglePOState(po.poNumber);
+                refreshSinglePOState(po.poNumber);
             } else { addNotification(`Error: ${res.message}`, 'error'); }
         } catch (e) { addNotification('EE Sync Exception.', 'error'); }
         finally { setSyncingEEId(null); }
@@ -565,9 +566,14 @@ const PoTable: React.FC<PoTableProps> = ({
         try {
             const res = await updatePOStatus(po.poNumber, 'Below Threshold');
             if (res.status === 'success') {
+                // PATCH LOCAL STATE IMMEDIATELY
+                setPurchaseOrders(prev => prev.map(p => 
+                    p.poNumber === po.poNumber ? { ...p, status: 'Below Threshold' as any } : p
+                ));
                 addNotification(`PO ${po.poNumber} marked as Below Threshold.`, 'success');
                 addLog('Threshold Update', `Moved PO ${po.poNumber} to Below Threshold`);
-                await refreshSinglePOState(po.poNumber);
+                // Background consistency check
+                refreshSinglePOState(po.poNumber);
             } else {
                 addNotification('Update Failed: ' + res.message, 'error');
             }
@@ -584,9 +590,14 @@ const PoTable: React.FC<PoTableProps> = ({
         try {
             const res = await updatePOStatus(po.poNumber, 'Cancelled');
             if (res.status === 'success') {
+                // PATCH LOCAL STATE IMMEDIATELY
+                setPurchaseOrders(prev => prev.map(p => 
+                    p.poNumber === po.poNumber ? { ...p, status: 'Cancelled' as any } : p
+                ));
                 addNotification(`PO ${po.poNumber} cancelled successfully.`, 'success');
                 addLog('Cancel PO', `Marked PO ${po.poNumber} as Cancelled`);
-                await refreshSinglePOState(po.poNumber);
+                // Background consistency check
+                refreshSinglePOState(po.poNumber);
             } else {
                 addNotification('Cancel Failed: ' + res.message, 'error');
             }
@@ -602,9 +613,14 @@ const PoTable: React.FC<PoTableProps> = ({
         try {
             const res = await updatePOStatus(po.poNumber, newStatus);
             if (res.status === 'success') {
-                addNotification(`PO ${po.poNumber} status updated to ${newStatus}.`, 'success');
+                // PATCH LOCAL STATE IMMEDIATELY
+                setPurchaseOrders(prev => prev.map(p => 
+                    p.poNumber === po.poNumber ? { ...p, status: newStatus as any } : p
+                ));
+                addNotification(`PO ${po.poNumber} updated to ${newStatus}.`, 'success');
                 addLog('Status Update', `Manually updated PO ${po.poNumber} to ${newStatus}`);
-                await refreshSinglePOState(po.poNumber);
+                // Background consistency check
+                refreshSinglePOState(po.poNumber);
             } else {
                 addNotification('Update Failed: ' + res.message, 'error');
             }
