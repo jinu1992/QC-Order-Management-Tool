@@ -10,7 +10,8 @@ import {
     RefreshIcon, 
     PaperclipIcon,
     AlertIcon,
-    TruckIcon
+    TruckIcon,
+    GlobeIcon
 } from './icons/Icons';
 import { logFileUpload, fetchUploadMetadata } from '../services/api';
 
@@ -69,6 +70,14 @@ const FileUploader: React.FC<FileUploaderProps> = ({ currentUser, addLog, addNot
             instructions: "Upload the PO file (.xls only) downloaded from the Flipkart Minutes portal. The system backend will process this data into the PO database.",
             accept: '.xls',
             validExtensions: ['.xls']
+        },
+        {
+            id: 'amazon-b2b-shipment',
+            name: 'Amazon B2B Shipment',
+            link: 'https://sellercentral.amazon.in/',
+            instructions: "Upload the Amazon B2B shipment CSV file. The system will extract Shipment IDs and FC IDs to update the PO Repository.",
+            accept: '.csv',
+            validExtensions: ['.csv']
         }
     ];
 
@@ -131,7 +140,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({ currentUser, addLog, addNot
             reader.onload = async (e) => {
                 try {
                     const base64Data = e.target?.result?.toString().split(',')[1];
-                    const res = await logFileUpload(selectedFunction, currentUser.name, base64Data, file.name);
+                    const res = await logFileUpload(selectedFunction, currentUser.email, base64Data, file.name);
                     
                     if (res.status === 'success') {
                         addLog('File Upload', `Successfully uploaded ${file.name} for ${selectedFunction}`);
@@ -218,8 +227,8 @@ const FileUploader: React.FC<FileUploaderProps> = ({ currentUser, addLog, addNot
                         <div key={func.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col hover:shadow-md transition-shadow overflow-hidden">
                             <div className="p-6 flex-1">
                                 <div className="flex items-center gap-3 mb-4">
-                                    <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
-                                        <FileIcon className="h-6 w-6" />
+                                    <div className={`p-2.5 rounded-xl ${func.id.includes('amazon') ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
+                                        {func.id.includes('amazon') ? <GlobeIcon className="h-6 w-6" /> : <FileIcon className="h-6 w-6" />}
                                     </div>
                                     <h3 className="font-bold text-gray-900">{func.name}</h3>
                                 </div>
@@ -231,7 +240,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({ currentUser, addLog, addNot
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
                                                     <CheckCircleIcon className="h-4 w-4 text-green-500" />
-                                                    <span className="text-xs font-bold text-gray-700">{meta.lastUploadedBy}</span>
+                                                    <span className="text-xs font-bold text-gray-700">{meta.lastUploadedBy.split('@')[0]}</span>
                                                 </div>
                                                 <span className="text-[10px] text-gray-400 font-medium italic">{meta.lastUploadedAt}</span>
                                             </div>
@@ -259,7 +268,11 @@ const FileUploader: React.FC<FileUploaderProps> = ({ currentUser, addLog, addNot
                             <div className="p-4 bg-gray-50 border-t border-gray-100">
                                 <button 
                                     onClick={() => handleUploadClick(func.id)}
-                                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-partners-green text-white font-bold rounded-xl shadow-lg shadow-green-100 hover:bg-green-700 transition-all active:scale-[0.98]"
+                                    className={`w-full flex items-center justify-center gap-2 py-2.5 text-white font-bold rounded-xl shadow-lg transition-all active:scale-[0.98] ${
+                                        func.id.includes('amazon') 
+                                        ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100' 
+                                        : 'bg-partners-green hover:bg-green-700 shadow-green-100'
+                                    }`}
                                 >
                                     <FileIcon className="h-4 w-4" />
                                     Upload New Data

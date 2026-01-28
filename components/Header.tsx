@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { DownloadIcon, BellIcon, CheckCircleIcon, InfoIcon, AdminIcon, MenuIcon } from './icons/Icons';
+import { DownloadIcon, BellIcon, CheckCircleIcon, InfoIcon, AdminIcon, MenuIcon, ArrowsExpandIcon, ArrowsMinimizeIcon } from './icons/Icons';
 import { NotificationItem, ViewType } from '../types';
 
 interface HeaderProps {
@@ -14,9 +14,81 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ notifications, onMarkRead, onClearAll, onViewLogs, activeView, onToggleSidebar }) => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [canFullscreen, setCanFullscreen] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  useEffect(() => {
+    // Robust check for fullscreen support
+    const doc = document as any;
+    const isSupported = !!(
+      doc.fullscreenEnabled || 
+      doc.webkitFullscreenEnabled || 
+      doc.mozFullScreenEnabled || 
+      doc.msFullscreenEnabled
+    );
+    // If we can't detect it, we assume true to allow the browser to try
+    setCanFullscreen(isSupported !== false);
+
+    const handleFullscreenChange = () => {
+      const isCurrentlyFull = !!(
+        doc.fullscreenElement || 
+        doc.webkitFullscreenElement || 
+        doc.mozFullScreenElement || 
+        doc.msFullscreenElement
+      );
+      setIsFullscreen(isCurrentlyFull);
+    };
+
+    const events = ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'];
+    events.forEach(event => document.addEventListener(event, handleFullscreenChange));
+
+    return () => {
+      events.forEach(event => document.removeEventListener(event, handleFullscreenChange));
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      const docEl = document.documentElement as any;
+      const doc = document as any;
+      
+      const isCurrentlyFull = !!(
+        doc.fullscreenElement || 
+        doc.webkitFullscreenElement || 
+        doc.mozFullScreenElement || 
+        doc.msFullscreenElement
+      );
+
+      if (!isCurrentlyFull) {
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen();
+        } else if (docEl.webkitRequestFullscreen) {
+          await docEl.webkitRequestFullscreen();
+        } else if (docEl.mozRequestFullScreen) {
+          await docEl.mozRequestFullScreen();
+        } else if (docEl.msRequestFullscreen) {
+          await docEl.msRequestFullscreen();
+        }
+      } else {
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          await doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          await doc.msExitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.error("Fullscreen toggle failed:", err);
+      // This usually happens if the iframe doesn't have allow="fullscreen"
+      alert("Fullscreen is restricted by the platform container. Try opening the app in a new tab.");
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -49,7 +121,7 @@ const Header: React.FC<HeaderProps> = ({ notifications, onMarkRead, onClearAll, 
       <div className="flex items-center gap-3">
         <button 
           onClick={onToggleSidebar}
-          className="p-2 -ml-2 text-gray-400 hover:text-partners-green hover:bg-partners-light-green rounded-lg transition-colors"
+          className="p-2 -ml-2 text-gray-600 hover:text-partners-green hover:bg-partners-light-green rounded-lg transition-colors"
           title="Toggle Navigation"
         >
           <MenuIcon className="h-6 w-6" />
@@ -60,11 +132,21 @@ const Header: React.FC<HeaderProps> = ({ notifications, onMarkRead, onClearAll, 
         </div>
       </div>
       
-      <div className="mt-4 md:mt-0 flex items-center gap-4">
+      <div className="mt-4 md:mt-0 flex items-center gap-2 sm:gap-4">
+        {canFullscreen && (
+          <button 
+              onClick={toggleFullscreen}
+              className="p-2 text-gray-800 hover:text-partners-green hover:bg-gray-100 rounded-full transition-all border border-transparent hover:border-gray-200 active:scale-95"
+              title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+          >
+              {isFullscreen ? <ArrowsMinimizeIcon className="h-6 w-6" /> : <ArrowsExpandIcon className="h-6 w-6" />}
+          </button>
+        )}
+
         <div className="relative" ref={dropdownRef}>
             <button 
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                className="p-2 text-gray-500 hover:bg-gray-100 rounded-full relative focus:outline-none transition-colors border border-transparent hover:border-gray-200"
+                className="p-2 text-gray-800 hover:text-partners-green hover:bg-gray-100 rounded-full relative focus:outline-none transition-all border border-transparent hover:border-gray-200 active:scale-95"
                 aria-label="Toggle notifications"
             >
                 <BellIcon className="h-6 w-6" />
@@ -137,9 +219,9 @@ const Header: React.FC<HeaderProps> = ({ notifications, onMarkRead, onClearAll, 
         </div>
 
         {(activeView === 'Purchase Orders' || activeView === 'Dashboard' || activeView === 'Sales Orders') && (
-            <button className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm font-bold text-partners-green border border-partners-green rounded-lg hover:bg-partners-light-green transition-all active:scale-95 shadow-sm">
+            <button className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-partners-green border border-partners-green rounded-lg hover:bg-partners-light-green transition-all active:scale-95 shadow-sm">
                 <DownloadIcon className="h-4 w-4" />
-                <span>Bulk Export</span>
+                <span className="hidden sm:inline">Bulk Export</span>
             </button>
         )}
       </div>

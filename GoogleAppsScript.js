@@ -4,6 +4,7 @@ const SHEET_INVENTORY = "Master_SKU_Mapping";
 const SHEET_CHANNEL_CONFIG = "Channel_Config";
 const SHEET_USERS = "Users";
 const SHEET_UPLOAD_LOGS = "Upload_Logs";
+const SHEET_PO_REPOSITORY = "PO_Repository";
 const LOG_DEBUG_SHEET = "System_Logs";
 
 // Ensure this matches your actual Spreadsheet ID
@@ -88,6 +89,99 @@ function doPost(e) {
     return responseJSON({status: 'error', message: 'Invalid action: ' + action});
   } catch (error) {
     return responseJSON({status: 'error', message: "doPost Error: " + error.toString()});
+  }
+}
+
+/**
+ * Handle File Uploads and process content based on FunctionID
+ */
+function logFileUpload(data) {
+  const { functionId, userName, fileData, fileName } = data;
+  const timestamp = new Date().toLocaleString();
+  
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const logSheet = getOrCreateSheet(SHEET_UPLOAD_LOGS, ["ID", "FunctionName", "LastUploadedBy", "LastUploadedAt", "Status", "FileName"]);
+  
+  try {
+    if (functionId === 'amazon-b2b-shipment') {
+      const processResult = processAmazonB2BShipment(fileData, fileName, userName);
+      if (processResult.status === 'success') {
+        logSheet.appendRow([functionId, "Amazon B2B Shipment", userName, timestamp, "Success", fileName]);
+        return responseJSON({ status: 'success', message: processResult.message });
+      } else {
+        throw new Error(processResult.message);
+      }
+    }
+    
+    // Default metadata log for other uploads
+    logSheet.appendRow([functionId, functionId, userName, timestamp, "Success", fileName]);
+    return responseJSON({ status: 'success', message: 'File upload logged.' });
+    
+  } catch (err) {
+    logSheet.appendRow([functionId, functionId, userName, timestamp, "Error", fileName]);
+    return responseJSON({ status: 'error', message: err.toString() });
+  }
+}
+
+/**
+ * Specifically parses Amazon B2B CSV and updates PO_Repository
+ */
+function processAmazonB2BShipment(base64Data, fileName, userEmail) {
+  if (!base64Data) return { status: 'error', message: 'No file data received.' };
+  
+  try {
+    const decoded = Utilities.newBlob(Utilities.base64Decode(base64Data), "text/csv").getDataAsString();
+    const rows = Utilities.parseCsv(decoded);
+    
+    if (rows.length < 2) return { status: 'error', message: 'File is empty or invalid.' };
+    
+    const headers = rows[0].map(h => h.trim());
+    const fcIdIdx = headers.indexOf("FC ID");
+    const shipmentIdIdx = headers.indexOf("Shipment ID");
+    
+    if (fcIdIdx === -1 || shipmentIdIdx === -1) {
+      return { status: 'error', message: 'Missing required columns: "FC ID" or "Shipment ID". Headers found: ' + headers.join(', ') };
+    }
+    
+    const repoSheet = getOrCreateSheet(SHEET_PO_REPOSITORY, [
+      "Date Received", "Channel Name", "Sender Email", "Subject", "File Name", "Drive Link", "Category", "PO Number", "Store Code", "Status"
+    ]);
+    
+    // Extract unique shipments
+    const uniqueShipments = new Map();
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const shipmentId = String(row[shipmentIdIdx]).trim();
+      const fcId = String(row[fcIdIdx]).trim();
+      
+      if (shipmentId && fcId) {
+        uniqueShipments.set(shipmentId, fcId);
+      }
+    }
+    
+    const dateStr = new Date().toLocaleDateString('en-GB');
+    let count = 0;
+    
+    uniqueShipments.forEach((fcId, shipmentId) => {
+      repoSheet.appendRow([
+        dateStr,
+        "Amazon",
+        userEmail,
+        "Amazon B2B Shipment Upload",
+        fileName,
+        "-",
+        "B2B Shipment",
+        shipmentId,
+        "Amazon_" + fcId,
+        "New"
+      ]);
+      count++;
+    });
+    
+    return { status: 'success', message: `Successfully processed ${count} unique shipments from ${fileName}.` };
+    
+  } catch (e) {
+    return { status: 'error', message: 'Parsing Error: ' + e.toString() };
   }
 }
 

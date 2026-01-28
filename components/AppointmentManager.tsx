@@ -259,51 +259,23 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
     }, []);
 
     const getIsAppointmentTaken = (po: PurchaseOrder) => {
-        // For Blinkit, an appointment is only "taken" if we have a request date or confirmed date.
-        // AWBs and Carriers are prerequisites for Blinkit, so they don't count as "Scheduled" on their own.
-        if (po.channel.toLowerCase().includes('blinkit')) {
-            return !!po.appointmentDate || !!po.appointmentRequestDate;
-        }
-        // For other channels, any logistics activity might mean it's being handled.
+        // An appointment is "taken" if it has a confirmed date OR an existing request date.
         return !!po.appointmentDate || !!po.appointmentRequestDate;
     };
 
     const relevantOrders = useMemo(() => {
-        let filtered = purchaseOrders.filter(po => 
+        // Rule: Only show orders for which an Appointment has NOT been booked yet.
+        return purchaseOrders.filter(po => 
             !getIsAppointmentTaken(po) && 
-            (po.status === POStatus.Pushed || po.status === POStatus.PartiallyProcessed || po.status === POStatus.InTransit)
-        );
-
-        // Inject 1 dummy entry for each active channel if none exist (for testing)
-        if (filtered.length === 0 && channelConfigs.length > 0) {
-            channelConfigs.filter(c => c.status === 'Active').forEach((config, idx) => {
-                const isBlinkit = config.channelName.toLowerCase().includes('blinkit');
-                filtered.push({
-                    id: `dummy-${config.channelName}`,
-                    poNumber: isBlinkit ? `BLKT-${idx + 5000}` : `P-TEST-${idx + 100}`,
-                    status: POStatus.InTransit,
-                    channel: config.channelName,
-                    storeCode: `TEST-STORE-${config.channelName.slice(0, 3).toUpperCase()}`,
-                    qty: 100,
-                    amount: 5000,
-                    orderDate: new Date().toLocaleDateString('en-GB'),
-                    contactVerified: true,
-                    awb: `AWB-TEST-${idx}`,
-                    carrier: 'Standard Courier',
-                    // Adding dummy item for the Blinkit helper to show invoice info
-                    items: isBlinkit ? [{
-                        articleCode: 'ART-001',
-                        qty: 100,
-                        itemName: 'Sample Product',
-                        invoiceNumber: `INV-${idx + 9000}`,
-                        invoicePdfUrl: 'https://example.com/invoice.pdf'
-                    }] : []
-                } as any as PurchaseOrder);
-            });
-        }
-
-        return filtered.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
-    }, [purchaseOrders, channelConfigs]);
+            (
+                po.status === POStatus.AppointmentPending || 
+                po.status === POStatus.Pushed || 
+                po.status === POStatus.PartiallyProcessed || 
+                po.status === POStatus.InTransit ||
+                po.status === POStatus.NewPO
+            )
+        ).sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
+    }, [purchaseOrders]);
 
     const statistics = useMemo(() => {
         const toBeScheduled = relevantOrders.length;
@@ -311,7 +283,7 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
         const invoicePending = purchaseOrders.filter(po => !po.poPdfUrl && po.status !== POStatus.Cancelled).length;
         const fulfilled = purchaseOrders.filter(po => po.status === POStatus.Delivered || po.status === POStatus.Closed).length;
         const cancelled = purchaseOrders.filter(po => po.status === POStatus.Cancelled).length;
-        return { toBeScheduled, openAppointments, invoicePending, fulfilled, cancelled, totalServiced: fulfilled + 15 };
+        return { toBeScheduled, openAppointments, invoicePending, fulfilled, cancelled, totalServiced: fulfilled };
     }, [relevantOrders, purchaseOrders]);
 
     const tableOrders = useMemo(() => {
@@ -427,10 +399,10 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
                     <div onClick={() => setActiveTab('invoicePending')} className={`p-4 border-r border-gray-100 cursor-pointer transition-colors ${activeTab === 'invoicePending' ? 'bg-yellow-50' : 'hover:bg-gray-50'}`}><p className="text-[10px] text-gray-500 leading-tight">PO's with invoice upload pending</p><p className="text-4xl font-bold text-yellow-500 mt-4">{statistics.invoicePending}</p></div>
                     <div onClick={() => setActiveTab('serviced')} className={`p-4 border-r border-gray-100 cursor-pointer transition-colors ${activeTab === 'serviced' ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
                         <div className="flex items-baseline gap-2"><span className="text-2xl font-bold text-gray-900">{statistics.totalServiced}</span><span className="text-xs font-medium text-gray-600">Appointments Serviced</span></div>
-                        <p className="text-[9px] text-gray-400 uppercase mt-1">Last 12 months</p>
-                        <div className="mt-4 flex justify-between"><div><p className="text-[10px] text-gray-500">Fulfilled</p><p className="text-lg font-bold text-gray-800">{statistics.fulfilled}</p></div><div><p className="text-[10px] text-gray-500">No Show</p><p className="text-lg font-bold text-gray-800">15</p></div></div>
+                        <p className="text-[9px] text-gray-400 uppercase mt-1">Total Fulfilled</p>
+                        <div className="mt-4 flex justify-between"><div><p className="text-[10px] text-gray-500">Fulfilled</p><p className="text-lg font-bold text-gray-800">{statistics.fulfilled}</p></div><div><p className="text-[10px] text-gray-500">No Show</p><p className="text-lg font-bold text-gray-800">0</p></div></div>
                     </div>
-                    <div onClick={() => setActiveTab('cancelled')} className={`p-4 cursor-pointer transition-colors ${activeTab === 'cancelled' ? 'bg-red-50' : 'hover:bg-gray-50'}`}><p className="text-[10px] text-gray-500 leading-tight">Cancelled Appointments</p><p className="text-[9px] text-gray-400 uppercase mb-2">Last 12 months</p><p className="text-4xl font-bold text-red-500">{statistics.cancelled}</p></div>
+                    <div onClick={() => setActiveTab('cancelled')} className={`p-4 cursor-pointer transition-colors ${activeTab === 'cancelled' ? 'bg-red-50' : 'hover:bg-gray-50'}`}><p className="text-[10px] text-gray-500 leading-tight">Cancelled Appointments</p><p className="text-[9px] text-gray-400 uppercase mb-2">Total</p><p className="text-4xl font-bold text-red-500">{statistics.cancelled}</p></div>
                 </div>
 
                 {/* Table */}

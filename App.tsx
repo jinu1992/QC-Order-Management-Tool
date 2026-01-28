@@ -133,6 +133,8 @@ const App: React.FC = () => {
     const rawStatus = String(po.status || '').trim().toLowerCase();
     if (rawStatus === 'cancelled') return POStatus.Cancelled;
     if (rawStatus === 'below threshold') return POStatus.BelowThreshold;
+    if (rawStatus === 'confirmed to send') return POStatus.ConfirmedToSend;
+    if (rawStatus === 'waiting for confirmation') return POStatus.WaitingForConfirmation;
 
     const items = po.items || [];
     const pushedCount = items.filter(i => !!i.eeOrderRefId).length;
@@ -164,7 +166,7 @@ const App: React.FC = () => {
     };
     purchaseOrders.forEach(po => {
         const status = getCalculatedStatus(po);
-        if (status === POStatus.NewPO) counts['New POs']++;
+        if (status === POStatus.NewPO || status === POStatus.ConfirmedToSend || status === POStatus.WaitingForConfirmation) counts['New POs']++;
         else if (status === POStatus.BelowThreshold) counts['Below Threshold POs']++;
         else if (status === POStatus.Pushed) counts['Pushed POs']++;
         else if (status === POStatus.PartiallyProcessed) counts['Partially Pushed POs']++;

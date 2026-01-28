@@ -3,6 +3,8 @@ export type ViewType = 'Dashboard' | 'Purchase Orders' | 'File Uploader' | 'POC 
 
 export enum POStatus {
     NewPO = 'New',
+    WaitingForConfirmation = 'Waiting for Confirmation',
+    ConfirmedToSend = 'Confirmed to send',
     BelowThreshold = 'Below Threshold',
     POCPending = 'POC Verification',
     AppointmentPending = 'Appointment to be taken',

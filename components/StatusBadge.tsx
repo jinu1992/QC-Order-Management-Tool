@@ -11,6 +11,10 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
     switch (status) {
       case POStatus.NewPO:
         return 'bg-blue-100 text-blue-800';
+      case POStatus.WaitingForConfirmation:
+        return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+      case POStatus.ConfirmedToSend:
+        return 'bg-indigo-100 text-indigo-800 border border-indigo-200';
       case POStatus.Cancelled:
         return 'bg-red-100 text-red-800';
       case POStatus.Pushed:

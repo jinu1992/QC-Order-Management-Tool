@@ -74,6 +74,8 @@ interface GroupedSalesOrder {
     rtoStatus?: string;
     rtoAwb?: string;
     boxCount: number;
+    appointmentDate?: string;
+    appointmentRequestDate?: string;
 }
 
 const CopyField = ({ label, value, icon }: { label: string, value: string, icon: React.ReactNode }) => {
@@ -121,7 +123,7 @@ const BlinkitAppointmentModal: FC<{ so: GroupedSalesOrder, onClose: () => void }
                         <div className="md:col-span-2"><CopyField label="Invoice PDF URL" value={so.invoicePdfUrl || 'N/A'} icon={<ExternalLinkIcon className="h-3 w-3"/>} /></div>
                     </div>
                     <div className="flex flex-col items-center pt-2">
-                        <button onClick={() => window.open('https://partnersbiz.com/login', '_blank')} className="w-full py-4 bg-partners-green text-white font-bold rounded-2xl shadow-xl shadow-green-100 hover:bg-green-700 transition-all flex items-center justify-center gap-3 active:scale-95"><ExternalLinkIcon className="h-5 w-5" /> Open Blinkit Partners Portal</button>
+                        <button onClick={() => window.open('https://partnersbiz.com', '_blank')} className="w-full py-4 bg-partners-green text-white font-bold rounded-2xl shadow-xl shadow-green-100 hover:bg-green-700 transition-all flex items-center justify-center gap-3 active:scale-95"><ExternalLinkIcon className="h-5 w-5" /> Open Blinkit Partners Portal</button>
                     </div>
                 </div>
             </div>
@@ -162,13 +164,13 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         { id: 'Label Generated', name: 'Label Generated' },
         { id: 'Box Data Upload Pending', name: 'Box Data Pending' },
         { id: 'Shipped', name: 'Shipped' },
-        { id: 'RTO', name: 'RTO' },
+        { id: 'Returned', name: 'Returned' },
         { id: 'Closed', name: 'Closed' },
     ];
 
     const { salesOrders, salesTabCounts } = useMemo(() => {
         const groups: Record<string, GroupedSalesOrder> = {};
-        const counts: Record<string, number> = { 'All POs': 0, 'Confirmed': 0, 'Batch Created': 0, 'Invoiced': 0, 'Label Generated': 0, 'Box Data Upload Pending': 0, 'Shipped': 0, 'RTO': 0, 'Closed': 0 };
+        const counts: Record<string, number> = { 'All POs': 0, 'Confirmed': 0, 'Batch Created': 0, 'Invoiced': 0, 'Label Generated': 0, 'Box Data Upload Pending': 0, 'Shipped': 0, 'Returned': 0, 'Closed': 0 };
 
         purchaseOrders.forEach(po => {
             (po.items || []).forEach(item => {
@@ -188,25 +190,40 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 const invNum = item.invoiceNumber;
                 const maniDate = item.eeManifestDate || po.eeManifestDate;
                 const eeStatus = (item.eeOrderStatus || po.eeOrderStatus || 'Processing').trim();
+                const eeStatusLower = eeStatus.toLowerCase();
                 
-                // Strictly use EE_order_date from item level for SO ID mapping as requested
                 const effectiveOrderDate = item.eeOrderDate || po.eeOrderDate || 'N/A';
                 
-                let displayStatus = eeStatus;
-                if (maniDate) {
-                    displayStatus = 'Shipped';
-                } else if (invNum && awb) {
-                    displayStatus = 'Label Generated';
-                } else if (invNum && eeBoxCount === 0) {
-                    displayStatus = 'Box Data Upload Pending';
-                } else if (invNum) {
-                    displayStatus = 'Invoiced';
-                } else if (batchDate) {
-                    displayStatus = 'Batch Created';
-                } else if (eeStatus.toLowerCase() === 'confirmed' || eeStatus.toLowerCase() === 'open') {
-                    displayStatus = 'Confirmed';
-                } else if (eeStatus.toLowerCase() === 'closed') {
+                let displayStatus = 'Processing';
+
+                // PRIORITY 1: RETURNED / RTO (Check this first to prevent "Shipped" from taking precedence)
+                if (eeStatusLower === 'returned' || eeStatusLower === 'rto' || item.rtoStatus || po.rtoStatus) {
+                    displayStatus = 'Returned';
+                } 
+                // PRIORITY 2: CLOSED
+                else if (eeStatusLower === 'closed') {
                     displayStatus = 'Closed';
+                } 
+                // PRIORITY 3: SHIPPED
+                else if (eeStatusLower === 'shipped' || maniDate) {
+                    displayStatus = 'Shipped';
+                } 
+                // PRIORITY 4: LABEL GENERATED
+                else if (awb) {
+                    displayStatus = 'Label Generated';
+                } 
+                // PRIORITY 5: INVOICED
+                else if (invNum) {
+                    if (eeBoxCount === 0) displayStatus = 'Box Data Upload Pending';
+                    else displayStatus = 'Invoiced';
+                } 
+                // PRIORITY 6: BATCHED
+                else if (batchDate || eeStatusLower === 'picking' || eeStatusLower === 'batched') {
+                    displayStatus = 'Batch Created';
+                } 
+                // PRIORITY 7: CONFIRMED
+                else if (eeStatusLower === 'confirmed' || eeStatusLower === 'open') {
+                    displayStatus = 'Confirmed';
                 }
 
                 if (!groups[refCode]) {
@@ -243,12 +260,17 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         deliveredDate: item.deliveredDate || po.deliveredDate, 
                         rtoStatus: item.rtoStatus || po.rtoStatus, 
                         rtoAwb: item.rtoAwb || po.rtoAwb, 
-                        boxCount: eeBoxCount
+                        boxCount: eeBoxCount,
+                        appointmentDate: po.appointmentDate,
+                        appointmentRequestDate: po.appointmentRequestDate
                     };
                 } else {
                     const curPo = String(po.id || '');
                     if (!groups[refCode].poReference.includes(curPo)) groups[refCode].poReference += `, ${curPo}`;
+                    
                     const statusRank = (s: string) => { 
+                        if (s === 'Returned') return 10; // Forced highest
+                        if (s === 'Closed') return 8;
                         if (s === 'Shipped') return 7; 
                         if (s === 'Label Generated') return 6;
                         if (s === 'Box Data Upload Pending') return 5;
@@ -280,6 +302,9 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     if (!groups[refCode].trackingStatus && trackingStatus) groups[refCode].trackingStatus = trackingStatus;
                     if (!groups[refCode].edd && item.edd) groups[refCode].edd = item.edd;
                     if (!groups[refCode].deliveredDate && item.deliveredDate) groups[refCode].deliveredDate = item.deliveredDate;
+
+                    if (!groups[refCode].appointmentDate) groups[refCode].appointmentDate = po.appointmentDate;
+                    if (!groups[refCode].appointmentRequestDate) groups[refCode].appointmentRequestDate = po.appointmentRequestDate;
                 }
                 groups[refCode].items.push(item);
                 groups[refCode].qty += effectiveQty;
@@ -291,15 +316,11 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         results.forEach(so => {
             counts['All POs']++;
             if (counts[so.status] !== undefined) counts[so.status]++;
-            if (so.rtoStatus) counts['RTO']++;
         });
 
         let filteredResults = results;
         if (activeFilter !== 'All POs') {
-             filteredResults = results.filter(so => {
-                 if (activeFilter === 'RTO') return !!so.rtoStatus;
-                 return so.status === activeFilter;
-             });
+             filteredResults = results.filter(so => so.status === activeFilter);
         }
 
         Object.keys(columnFilters).forEach(key => {
@@ -377,8 +398,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         const isExecuting = isCreatingInvoice === so.id || isPushingNimbus === so.id;
         const eeStatusLower = so.originalEeStatus.toLowerCase().trim();
         
-        // Refined Gate Logic: Invoicing option is ONLY available if status is 'confirmed' or later (progression to Batch Created).
-        // It strictly disables the option if the EE status is 'open'.
         const canInvoice = !so.invoiceNumber && 
             eeStatusLower !== 'open' &&
             (eeStatusLower === 'confirmed' || so.status === 'Batch Created');
@@ -475,7 +494,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 const isExpanded = expandedRowId === so.id;
                                 const totalAmountIncTax = so.amount * 1.05;
                                 const action = getPrimaryAction(so);
-                                const isRTO = !!so.rtoStatus;
 
                                 return (
                                     <Fragment key={so.id}>
@@ -484,13 +502,14 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                             <td className="px-6 py-4 font-bold text-blue-600 whitespace-nowrap sticky left-12 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">{so.id}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                                    so.status === 'Returned' ? 'bg-red-100 text-red-700' :
                                                     so.status === 'Shipped' ? 'bg-emerald-100 text-emerald-700' : 
                                                     so.status === 'Label Generated' ? 'bg-amber-100 text-amber-700' :
                                                     so.status === 'Box Data Upload Pending' ? 'bg-red-50 text-red-700 border border-red-100' :
                                                     so.status === 'Invoiced' ? 'bg-indigo-100 text-indigo-700' : 
                                                     'bg-blue-100 text-blue-700'
                                                 }`}>
-                                                    {isRTO ? `RTO: ${so.rtoStatus}` : so.status}
+                                                    {so.status}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">{so.channel}</td>
@@ -562,14 +581,31 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                         </div>
                                                         <div className="pt-6 border-t border-gray-100">
                                                             <div className="flex justify-between items-center mb-4"><h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><GlobeIcon className="h-4 w-4 text-blue-600" /> Logistics & Shipment Status</h4>{(so.invoiceNumber && !so.awb && so.boxCount > 0) && <button onClick={() => handlePushToNimbusAction(so.id)} disabled={!!isPushingNimbus} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95">{isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}{isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post'}</button>}</div>
-                                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><div className={`p-4 rounded-xl border transition-all ${so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{so.boxCount || 0}</p></div></div></div>
-                                                            {so.awb ? <>
+                                                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                                                                <div className={`p-4 rounded-xl border transition-all ${so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{so.boxCount || 0}</p></div></div></div>
+                                                                
+                                                                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase mb-2">Appointment Date</p>
+                                                                    <div className="flex flex-col h-full">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <CalendarIcon className={`h-4 w-4 ${so.appointmentDate ? 'text-indigo-600' : 'text-gray-300'}`} />
+                                                                            <p className={`text-sm font-bold ${so.appointmentDate ? 'text-indigo-700' : 'text-gray-400'}`}>
+                                                                                {so.appointmentDate || so.appointmentRequestDate || 'Pending'}
+                                                                            </p>
+                                                                        </div>
+                                                                        <p className="text-[9px] text-indigo-400 font-medium mt-1 uppercase tracking-tighter">
+                                                                            {so.appointmentDate ? 'Confirmed' : so.appointmentRequestDate ? 'Requested' : 'To be Scheduled'}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+
+                                                                {so.awb ? <>
                                                                 <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 col-span-1 md:col-span-1"><div className="flex flex-col h-full justify-between"><div><p className="text-[10px] font-bold text-blue-400 uppercase">Carrier & AWB</p><p className="text-sm font-bold text-gray-900 truncate">{so.carrier || 'Pending'}</p><p className="text-xs font-mono text-blue-600 font-bold tracking-wider">{so.awb}</p></div><span className={`mt-2 w-fit px-2 py-0.5 rounded text-[10px] font-bold border ${so.trackingStatus?.toLowerCase().includes('deliv') ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{so.trackingStatus || 'In-Transit'}</span></div></div>
                                                                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-100"><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Delivery SLA</p><div className="space-y-3"><div><p className="text-[9px] font-bold text-gray-400">Exp Delivery Date</p><p className="text-sm font-bold text-partners-green">{so.edd || 'TBD'}</p></div><div><p className="text-[9px] font-bold text-gray-400">Delivered Date</p><p className="text-sm font-bold text-gray-800">{so.deliveredDate || '-'}</p></div></div></div>
-                                                                <div className={`p-4 rounded-xl border ${so.rtoStatus ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Return Status (RTO)</p>{so.rtoStatus ? <div className="space-y-2"><p className="text-xs font-bold text-red-600">{so.rtoStatus}</p><div><p className="text-[9px] font-bold text-gray-400">Return AWB</p><p className="text-xs font-mono font-bold text-red-600">{so.rtoAwb || 'N/A'}</p></div></div> : <div className="flex flex-col items-center justify-center py-2"><CheckCircleIcon className="h-6 w-6 text-gray-200" /><p className="text-[10px] font-bold text-gray-400 mt-1 uppercase">No Returns</p></div>}</div>
+                                                                <div className={`p-4 rounded-xl border ${so.status === 'Returned' ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Return Status (RTO)</p>{so.status === 'Returned' ? <div className="space-y-2"><p className="text-xs font-bold text-red-600">{so.rtoStatus || 'Returned'}</p><div><p className="text-[9px] font-bold text-gray-400">Return AWB</p><p className="text-xs font-mono font-bold text-red-600">{so.rtoAwb || 'N/A'}</p></div></div> : <div className="flex flex-col items-center justify-center py-2"><CheckCircleIcon className="h-6 w-6 text-gray-200" /><p className="text-[10px] font-bold text-gray-400 mt-1 uppercase">No Returns</p></div>}</div>
                                                             </> : <div className="md:col-span-3 p-12 border-2 border-dashed border-gray-100 rounded-2xl flex flex-col items-center justify-center text-center">{!so.invoiceNumber ? <><LockClosedIcon className="h-8 w-8 text-gray-200 mb-3" /><p className="text-sm font-bold text-gray-400 uppercase">Logistics Pending Invoice Generation</p></> : so.boxCount === 0 ? <><div className="p-4 bg-red-50 rounded-xl border border-red-100 mb-3"><CubeIcon className="h-8 w-8 text-red-500 mx-auto mb-2" /><p className="text-sm font-bold text-red-600 uppercase">Missing Physical Box Data</p></div><p className="text-xs text-red-400">Update box count in the backend to enable shipping.</p></> : <><TruckIcon className="h-8 w-8 text-blue-200 mb-3" /><p className="text-sm font-bold text-blue-400 uppercase">Invoice Ready for Shipment</p><p className="text-xs text-blue-300 mt-1">Generate AWB by clicking the 'Ship with Nimbus' button above.</p></>}</div>}
                                                             </div>
-                                                            {so.awb && so.channel.toLowerCase().includes('blinkit') && !so.status.toLowerCase().includes('shipped') && (
+                                                            {so.awb && so.channel.toLowerCase().includes('blinkit') && so.status !== 'Shipped' && so.status !== 'Returned' && (
                                                                 <div className="mt-4 bg-yellow-50 border border-yellow-200 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-2">
                                                                     <div className="flex items-center gap-3"><div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center text-white shadow-lg"><span className="font-black italic text-xl">b</span></div><div><p className="text-xs font-bold text-yellow-800 uppercase">Blinkit Portal Action Required</p><p className="text-[10px] text-yellow-600 font-medium">AWB assigned. Generate appointment pass before dispatching.</p></div></div>
                                                                     <button onClick={(e) => { e.stopPropagation(); setBlinkitModal({ isOpen: true, so }); }} className="px-6 py-2.5 bg-yellow-500 text-white text-[11px] font-bold rounded-xl shadow-md hover:bg-yellow-600 transition-all flex items-center gap-2"><CalendarIcon className="h-4 w-4" />Get Appointment Details</button>
