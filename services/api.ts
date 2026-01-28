@@ -41,7 +41,7 @@ export const createZohoInvoice = async (eeReferenceCode: string): Promise<{statu
     return await response.json();
 };
 
-export const pushToNimbusPost = async (eeReferenceCode: string): Promise<{status: string, message?: string}> => {
+export const pushToNimbusPost = async (eeReferenceCode: string): Promise<{status: string, message?: string, awb?: string}> => {
     const response = await postToScript({ 
         action: 'pushToNimbus', 
         eeReferenceCode 

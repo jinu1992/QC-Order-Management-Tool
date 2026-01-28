@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, Fragment, useMemo, useRef } from 'react';
 import { POStatus, type PurchaseOrder, POItem, InventoryItem, ChannelConfig } from '../types';
 import StatusBadge from './StatusBadge';
@@ -194,6 +195,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                         <div className="relative flex-shrink-0" ref={menuRef}>
                             <button 
                                 onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }}
+                                // FIXED: Wrapped ternary expression result in quotes for valid Tailwind CSS string
                                 className={`text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-full transition-colors ${isMenuOpen ? 'bg-gray-100 text-gray-600' : ''}`}
                             >
                                 <DotsVerticalIcon className="h-5 w-5" />
@@ -526,10 +528,25 @@ const PoTable: React.FC<PoTableProps> = ({
         try {
             const res = await pushToEasyEcom(po, selected);
             if (res.status === 'success') {
+                // PATCH LOCAL STATE IMMEDIATELY for items being pushed
+                setPurchaseOrders(prev => prev.map(p => {
+                    if (p.poNumber === po.poNumber) {
+                        return {
+                            ...p,
+                            items: p.items?.map(item => 
+                                selected.includes(item.articleCode) 
+                                    ? { ...item, eeOrderRefId: 'PATCHED' } // Placeholder ID to flip UI state
+                                    : item
+                            )
+                        };
+                    }
+                    return p;
+                }));
+
                 addNotification(res.message, 'success');
                 addLog('EasyEcom Sync', `Pushed ${selected.length} items from PO ${po.poNumber}`);
                 setSelectedPoItems(prev => ({ ...prev, [po.id]: [] }));
-                // Immediate local refresh
+                // Background consistency check
                 refreshSinglePOState(po.poNumber);
             } else { addNotification('Failed: ' + res.message, 'error'); }
         } catch (e) { addNotification('Network error.', 'error'); }
@@ -716,7 +733,7 @@ const PoTable: React.FC<PoTableProps> = ({
                                 />
                             ))
                         )}
-                        <tr className="h-32"><td colSpan={8}></td></tr>
+                        <tr className="h-32"><td colSpan={8} className="bg-white"></td></tr>
                     </tbody>
                 </table>
             </div>

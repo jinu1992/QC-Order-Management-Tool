@@ -344,9 +344,28 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         try {
             const res = await pushToNimbusPost(eeRef);
             if (res.status === 'success') {
+                // PATCH LOCAL STATE IMMEDIATELY WITH AWB FOR ALL MATCHING PO ITEMS
+                const parentPoNumbers = poRef.split(',').map(s => s.trim());
+                if (res.awb) {
+                    setPurchaseOrders(prev => prev.map(po => {
+                        if (parentPoNumbers.includes(po.poNumber)) {
+                            return {
+                                ...po,
+                                awb: res.awb, // Optimization: assume single AWB for batch
+                                items: po.items?.map(item => 
+                                    item.eeReferenceCode === eeRef ? { ...item, awb: res.awb } : item
+                                )
+                            };
+                        }
+                        return po;
+                    }));
+                }
+
                 addNotification(res.message || 'Pushed to Nimbus.', 'success');
                 addLog('Nimbus Shipping', `EE Ref: ${eeRef}`);
-                await refreshSingleSOState(poRef);
+                
+                // Background update for full metadata
+                refreshSingleSOState(poRef);
             } else {
                 addNotification('Shipping Error: ' + res.message, 'error');
             }
