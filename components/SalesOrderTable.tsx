@@ -25,7 +25,6 @@ import {
     SearchIcon,
     FilterIcon,
     PrinterIcon,
-    // Add ClockIcon to imports
     ClockIcon
 } from './icons/Icons';
 import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO } from '../services/api';
@@ -89,13 +88,13 @@ const LabelPrintModal: FC<{ so: GroupedSalesOrder, inventoryItems?: InventoryIte
     const innerBoxCount = so.boxCount || 0;
 
     const handlePrint = () => {
-        // We trigger standard print. Most browsers allow "Save as PDF" as a printer destination.
         window.print();
     };
 
     const getItemEan = (item: POItem) => {
-        const inv = inventoryItems?.find(i => i.sku === item.masterSku || i.articleCode === item.articleCode);
-        return inv?.ean || '8906163950089'; // Using sample from image if not found for visual consistency in demo
+        // Fetch from Master SKU Mapping (inventoryItems) using articleCode
+        const inv = inventoryItems?.find(i => i.articleCode === item.articleCode);
+        return inv?.ean || 'N/A';
     };
 
     const flattenedLabels = useMemo(() => {
@@ -110,17 +109,24 @@ const LabelPrintModal: FC<{ so: GroupedSalesOrder, inventoryItems?: InventoryIte
     }, [so.items]);
 
     return (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[150] p-4 no-print-overlay">
-            {/* CSS Fixes for Blank Page and Thermal 4x6 Layout */}
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[150] p-4 no-print-modal-overlay">
             <style>
                 {`
                 @media print {
-                    /* Hide everything including modal backdrops and buttons */
-                    body * { visibility: hidden !important; }
-                    .no-print-overlay { display: none !important; }
+                    /* Reset everything */
+                    html, body {
+                        height: auto !important;
+                        overflow: visible !important;
+                        background: white !important;
+                    }
                     
-                    /* Show ONLY the print-area */
+                    /* Hide everything including the modal structure */
+                    body * { visibility: hidden !important; }
+                    .no-print-modal-overlay { display: none !important; }
+                    
+                    /* Show only the print area and its contents */
                     .print-area, .print-area * { visibility: visible !important; }
+                    
                     .print-area { 
                         position: absolute !important; 
                         left: 0 !important; 
@@ -128,10 +134,13 @@ const LabelPrintModal: FC<{ so: GroupedSalesOrder, inventoryItems?: InventoryIte
                         width: 100% !important;
                         margin: 0 !important;
                         padding: 0 !important;
-                        background: white !important;
+                    }
+                    
+                    @page { 
+                        size: ${printMode === 'individual' ? '4in 6in' : 'A3'};
+                        margin: 0 !important;
                     }
 
-                    /* Define dimensions per label */
                     .label-4x6 {
                         width: 4in !important;
                         height: 6in !important;
@@ -140,11 +149,10 @@ const LabelPrintModal: FC<{ so: GroupedSalesOrder, inventoryItems?: InventoryIte
                         flex-direction: column !important;
                         background: white !important;
                         color: black !important;
-                        font-family: Arial, sans-serif !important;
-                        padding: 0.3in !important; /* Industrial standard margin */
-                        margin: 0 auto !important;
+                        font-family: 'Arial', sans-serif !important;
+                        padding: 0.4in !important; /* Safety margin for thermal printers */
+                        margin: 0 !important;
                         box-sizing: border-box !important;
-                        overflow: hidden !important;
                     }
 
                     .slip-a3 {
@@ -158,40 +166,20 @@ const LabelPrintModal: FC<{ so: GroupedSalesOrder, inventoryItems?: InventoryIte
                         flex-direction: column !important;
                         box-sizing: border-box !important;
                     }
-
-                    @page {
-                        margin: 0 !important;
-                        size: ${printMode === 'individual' ? '4in 6in' : 'A3'} !important;
-                    }
-                }
-
-                /* UI Preview Styles */
-                .label-preview-card {
-                    width: 4in;
-                    height: 6in;
-                    background: white;
-                    color: black;
-                    font-family: Arial, sans-serif;
-                    padding: 0.3in;
-                    box-sizing: border-box;
-                    box-shadow: 0 0 40px rgba(0,0,0,0.1);
-                    margin: 0 auto;
-                    display: flex;
-                    flex-direction: column;
                 }
                 `}
             </style>
 
-            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-6xl flex flex-col h-[92vh] overflow-hidden no-print">
+            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-6xl flex flex-col h-[92vh] overflow-hidden no-print">
                 <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                     <div>
                         <div className="flex items-center gap-3 mb-1">
                             <div className="p-2 bg-partners-green rounded-xl text-white">
                                 <PrinterIcon className="h-6 w-6" />
                             </div>
-                            <h3 className="text-2xl font-bold text-gray-800 tracking-tight">Instamart Thermal Label Console</h3>
+                            <h3 className="text-2xl font-bold text-gray-800 tracking-tight">Thermal Label Helper</h3>
                         </div>
-                        <p className="text-sm text-gray-500 font-medium ml-11">SO ID: <span className="font-bold text-partners-green">{so.id}</span> • Standard: 4x6 Inch / 100x150mm</p>
+                        <p className="text-sm text-gray-500 font-medium ml-11">Fulfillment ID: <span className="font-bold text-partners-green">{so.id}</span> • Output: 4x6 Inch</p>
                     </div>
                     <div className="flex items-center gap-4">
                          <div className="bg-gray-200/50 p-1 rounded-2xl flex shadow-inner">
@@ -213,67 +201,67 @@ const LabelPrintModal: FC<{ so: GroupedSalesOrder, inventoryItems?: InventoryIte
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-12 bg-[#F2F4F7]">
-                    {/* Instructions for blank page or PDF */}
-                    <div className="max-w-4xl mx-auto mb-8 bg-blue-50 border-2 border-blue-200 rounded-2xl p-4 flex gap-4 items-center">
-                        <div className="bg-blue-500 p-2 rounded-lg text-white"><InfoIcon className="h-5 w-5"/></div>
+                    <div className="max-w-4xl mx-auto mb-8 bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 flex gap-4 items-center">
+                        <div className="bg-amber-500 p-2 rounded-lg text-white"><InfoIcon className="h-5 w-5"/></div>
                         <div className="flex-1">
-                            <p className="text-sm font-bold text-blue-900">Printing & PDF Instruction</p>
-                            <p className="text-xs text-blue-700 leading-relaxed font-medium">To download as PDF, click "Print Labels" and select <b>"Save as PDF"</b> as the destination. Ensure <b>"Background Graphics"</b> is checked and <b>"Margins"</b> is set to None for perfect 4x6 output.</p>
+                            <p className="text-sm font-bold text-amber-900 uppercase">Thermal Printing Tip</p>
+                            <p className="text-xs text-amber-700 leading-relaxed">Ensure "Margins" are set to <b>None</b> and "Scale" is set to <b>100%</b> in the print settings for perfect 4x6 alignment.</p>
                         </div>
                     </div>
 
                     <div className="print-area">
                         {printMode === 'individual' ? (
-                            <div className="flex flex-col items-center gap-12 pb-20">
+                            <div className="flex flex-col items-center gap-12 pb-24">
                                 {flattenedLabels.map((entry, idx) => {
                                     const { item, boxIndex, totalBoxes } = entry;
                                     const eanValue = getItemEan(item);
                                     return (
-                                        <div key={idx} className="label-4x6 label-preview-card">
-                                            {/* Exact layout from user image */}
-                                            <div className="flex justify-between items-start mb-6">
-                                                <h1 className="text-[20px] font-black uppercase tracking-tighter">INSTAMART BOX LABEL</h1>
-                                                <h1 className="text-[20px] font-black uppercase tracking-tighter">BOX {totalBoxes > 1 ? `${boxIndex}/${totalBoxes}` : `${idx + 1}/${flattenedLabels.length}`}</h1>
+                                        <div key={idx} className="label-4x6 shadow-2xl bg-white">
+                                            {/* Header matches screenshot layout */}
+                                            <div className="flex flex-col mb-10">
+                                                <h1 className="text-[22px] font-black uppercase tracking-tight">INSTAMART BOX LABEL</h1>
+                                                <h1 className="text-[20px] font-black uppercase tracking-tight mt-1 text-gray-900">BOX {totalBoxes > 1 ? `${boxIndex}/${totalBoxes}` : `${idx + 1}/${flattenedLabels.length}`}</h1>
                                             </div>
 
-                                            <div className="grid grid-cols-2 gap-x-4 mb-6">
+                                            <div className="grid grid-cols-2 gap-x-6 mb-10">
                                                 <div className="flex flex-col">
-                                                    <span className="text-[10px] font-bold text-gray-900 mb-1">PO NUMBER</span>
-                                                    <span className="text-[22px] font-bold leading-none tracking-tight">{so.poReference}</span>
+                                                    <span className="text-[11px] font-bold text-gray-500 mb-1">PO NUMBER</span>
+                                                    <span className="text-[20px] font-bold leading-none uppercase">{so.poReference}</span>
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <span className="text-[10px] font-bold text-gray-900 mb-1">INVOICE NO.</span>
-                                                    <span className="text-[22px] font-bold leading-none tracking-tight break-all">{so.invoiceNumber || 'PENDING'}</span>
+                                                    <span className="text-[11px] font-bold text-gray-500 mb-1">INVOICE NO.</span>
+                                                    <span className="text-[20px] font-bold leading-none break-all uppercase">{so.invoiceNumber || 'PENDING'}</span>
                                                 </div>
                                             </div>
 
-                                            <div className="flex flex-col mb-8">
-                                                <span className="text-[10px] font-bold text-gray-900 mb-1">ITEM NAME</span>
-                                                <span className="text-[22px] font-bold leading-[1.1] uppercase tracking-tighter">{item.itemName}</span>
+                                            {/* Item Name with wrapping */}
+                                            <div className="flex flex-col mb-10">
+                                                <span className="text-[11px] font-bold text-gray-500 mb-1">ITEM NAME</span>
+                                                <span className="text-[21px] font-black leading-[1.2] uppercase tracking-tight whitespace-normal break-words">{item.itemName}</span>
                                             </div>
 
-                                            <div className="grid grid-cols-12 gap-2 mb-8">
-                                                <div className="col-span-4 flex flex-col">
-                                                    <span className="text-[10px] font-bold text-gray-900 mb-1">ITEM CODE</span>
-                                                    <span className="text-[22px] font-bold leading-none">{item.articleCode}</span>
-                                                </div>
-                                                <div className="col-span-3 flex flex-col">
-                                                    <span className="text-[10px] font-bold text-gray-900 mb-1">QUANTITY</span>
-                                                    <span className="text-[22px] font-bold leading-none">{item.itemQuantity || item.qty}</span>
-                                                </div>
-                                                <div className="col-span-5 flex flex-col">
-                                                    <span className="text-[10px] font-bold text-gray-900 mb-1">EAN BARCODE</span>
-                                                    <span className="text-[22px] font-bold leading-none tracking-tighter">{eanValue}</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-x-4 mt-auto">
+                                            <div className="grid grid-cols-3 gap-x-4 mb-10">
                                                 <div className="flex flex-col">
-                                                    <span className="text-[10px] font-bold text-gray-900 mb-1">BOX ID</span>
+                                                    <span className="text-[11px] font-bold text-gray-500 mb-1">ITEM CODE</span>
+                                                    <span className="text-[20px] font-bold leading-none">{item.articleCode}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[11px] font-bold text-gray-500 mb-1">QUANTITY</span>
+                                                    <span className="text-[20px] font-bold leading-none">{item.itemQuantity || item.qty}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[11px] font-bold text-gray-500 mb-1">EAN BARCODE</span>
+                                                    <span className="text-[20px] font-bold leading-none tracking-tight">{eanValue}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-x-6 mt-auto">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[11px] font-bold text-gray-500 mb-1">BOX ID</span>
                                                     <span className="text-[20px] font-bold leading-none">{so.id}</span>
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <span className="text-[10px] font-bold text-gray-900 mb-1">PACKED DATE</span>
+                                                    <span className="text-[11px] font-bold text-gray-500 mb-1">PACKED DATE</span>
                                                     <span className="text-[20px] font-bold leading-none">{new Date().toLocaleDateString('en-GB')}</span>
                                                 </div>
                                             </div>
@@ -282,54 +270,54 @@ const LabelPrintModal: FC<{ so: GroupedSalesOrder, inventoryItems?: InventoryIte
                                 })}
                             </div>
                         ) : (
-                            <div className="slip-a3 bg-white shadow-2xl mx-auto">
+                            <div className="slip-a3 bg-white mx-auto shadow-2xl">
                                 <div className="text-center pb-12 border-b-8 border-black">
-                                    <h2 className="text-8xl font-black uppercase tracking-tighter">Master Box Pack Slip</h2>
+                                    <h2 className="text-7xl font-bold uppercase tracking-tight">Master Box Pack Slip</h2>
                                     <p className="text-3xl font-bold text-gray-600 mt-4 italic uppercase">CONSOLIDATED INSTAMART SHIPMENT</p>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-16 py-12 border-b-4 border-black">
                                     <div className="space-y-4">
                                         <label className="text-3xl font-bold text-gray-500 uppercase tracking-widest">PO Reference</label>
-                                        <p className="text-8xl font-black tracking-tighter">{so.poReference}</p>
+                                        <p className="text-7xl font-bold tracking-tighter">{so.poReference}</p>
                                     </div>
                                     <div className="space-y-4">
                                         <label className="text-3xl font-bold text-gray-500 uppercase tracking-widest">Invoice Number</label>
-                                        <p className="text-8xl font-black tracking-tighter">{so.invoiceNumber || 'PENDING'}</p>
+                                        <p className="text-7xl font-bold tracking-tighter">{so.invoiceNumber || 'PENDING'}</p>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-3 gap-8 py-12 border-b-8 border-black">
-                                    <div className="text-center p-10 bg-gray-50 rounded-[3rem]">
-                                        <label className="text-2xl font-black text-gray-500 uppercase">Inner Boxes</label>
-                                        <p className="text-[14rem] font-black leading-none mt-6">{innerBoxCount}</p>
+                                    <div className="text-center p-8 bg-gray-50 rounded-3xl">
+                                        <label className="text-2xl font-bold text-gray-500 uppercase">Inner Boxes</label>
+                                        <p className="text-[12rem] font-bold leading-none mt-4">{innerBoxCount}</p>
                                     </div>
-                                    <div className="text-center p-10 border-x-4 border-gray-100">
-                                        <label className="text-2xl font-black text-gray-500 uppercase">Unique SKUs</label>
-                                        <p className="text-[14rem] font-black leading-none mt-6">{skuCount}</p>
+                                    <div className="text-center p-8 border-x-4 border-gray-200">
+                                        <label className="text-2xl font-bold text-gray-500 uppercase">Unique SKUs</label>
+                                        <p className="text-[12rem] font-bold leading-none mt-4">{skuCount}</p>
                                     </div>
-                                    <div className="text-center p-10 bg-black text-white rounded-[3rem]">
-                                        <label className="text-2xl font-black text-gray-300 uppercase">Total Qty</label>
-                                        <p className="text-[14rem] font-black leading-none mt-6">{totalQty}</p>
+                                    <div className="text-center p-8 bg-black text-white rounded-3xl">
+                                        <label className="text-2xl font-bold text-gray-300 uppercase">Total Qty</label>
+                                        <p className="text-[12rem] font-bold leading-none mt-4">{totalQty}</p>
                                     </div>
                                 </div>
 
-                                <div className="mt-12 overflow-hidden rounded-[3rem] border-4 border-black">
+                                <div className="mt-12 overflow-hidden rounded-3xl border-4 border-black">
                                     <table className="w-full border-collapse">
                                         <thead>
                                             <tr className="bg-gray-100">
-                                                <th className="border-b-4 border-black p-10 text-left text-5xl font-black uppercase tracking-tighter">Item Name / Channel Code</th>
-                                                <th className="border-b-4 border-black p-10 text-right text-5xl font-black w-64 uppercase tracking-tighter">Qty</th>
+                                                <th className="border-b-4 border-black p-8 text-left text-4xl font-bold uppercase tracking-tighter">Item Name / Channel Code</th>
+                                                <th className="border-b-4 border-black p-8 text-right text-4xl font-bold w-64 uppercase tracking-tighter">Qty</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {so.items.map((item, idx) => (
                                                 <tr key={idx} className="border-b-2 border-gray-200 last:border-b-0">
-                                                    <td className="p-12 text-4xl font-bold leading-tight">
+                                                    <td className="p-10 text-3xl font-bold">
                                                         {item.itemName}
-                                                        <p className="text-3xl font-black text-partners-green mt-4">Instamart Channel Code: {item.articleCode}</p>
+                                                        <p className="text-2xl font-bold text-partners-green mt-4">Instamart Channel Code: {item.articleCode}</p>
                                                     </td>
-                                                    <td className="p-12 text-right text-8xl font-black">
+                                                    <td className="p-10 text-right text-6xl font-bold">
                                                         {item.itemQuantity || item.qty}
                                                     </td>
                                                 </tr>
@@ -342,15 +330,23 @@ const LabelPrintModal: FC<{ so: GroupedSalesOrder, inventoryItems?: InventoryIte
                     </div>
                 </div>
 
-                <div className="p-10 border-t border-gray-100 bg-white flex justify-end items-center gap-6 shadow-[0_-15px_30px_rgba(0,0,0,0.04)] no-print">
-                    <div className="mr-auto flex items-center gap-3 text-gray-500 font-bold">
-                        <ClockIcon className="h-5 w-5" />
-                        <span className="text-sm">Generated: {new Date().toLocaleString('en-GB')}</span>
-                    </div>
-                    <button onClick={onClose} className="px-10 py-4 text-lg font-bold text-gray-600 hover:bg-gray-100 rounded-[1.5rem] transition-all border-2 border-transparent hover:border-gray-200">Cancel</button>
-                    <button onClick={handlePrint} className="px-14 py-4 bg-partners-green text-white text-lg font-black rounded-[1.5rem] shadow-2xl shadow-green-200 hover:bg-green-700 transition-all flex items-center gap-4 active:scale-95 group">
-                        <PrinterIcon className="h-6 w-6 group-hover:rotate-12 transition-transform" />
-                        Print Labels / Save as PDF
+                <div className="p-10 border-t border-gray-100 bg-white flex justify-end gap-4 shadow-[0_-10px_20px_rgba(0,0,0,0.03)] no-print">
+                    <button onClick={onClose} className="px-10 py-4 text-lg font-bold text-gray-500 hover:bg-gray-100 rounded-[1.25rem] transition-all border border-transparent hover:border-gray-200">Cancel</button>
+                    
+                    <button 
+                        onClick={handlePrint} 
+                        className="px-8 py-4 bg-partners-blue text-white text-lg font-black rounded-[1.25rem] shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all flex items-center gap-3 active:scale-95"
+                    >
+                        <CloudDownloadIcon className="h-6 w-6" />
+                        Download PDF
+                    </button>
+
+                    <button 
+                        onClick={handlePrint} 
+                        className="px-14 py-4 bg-partners-green text-white text-lg font-black rounded-[1.25rem] shadow-xl shadow-green-100 hover:bg-green-700 transition-all flex items-center gap-4 active:scale-95"
+                    >
+                        <PrinterIcon className="h-6 w-6" />
+                        Print Labels
                     </button>
                 </div>
             </div>
