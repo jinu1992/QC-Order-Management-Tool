@@ -22,6 +22,14 @@ export const DownloadIcon: React.FC<IconProps> = (props) => (
     </svg>
 );
 
+export const PrinterIcon: React.FC<IconProps> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.89l-4.72-4.72 4.72-4.72M17.28 4.45l4.72 4.72-4.72 4.72M14.25 19.5a4.5 4.5 0 004.5-4.5V4.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 9h18M3 13h18M3 17h18" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v18" />
+    </svg>
+);
+
 export const InfoIcon: React.FC<IconProps> = ({ className, ...props }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

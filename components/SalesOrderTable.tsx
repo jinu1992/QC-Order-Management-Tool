@@ -1,3 +1,4 @@
+
 import React, { useState, Fragment, useMemo, FC, useRef, useEffect } from 'react';
 import { type PurchaseOrder, type InventoryItem, POItem } from '../types';
 import { 
@@ -22,7 +23,8 @@ import {
     XCircleIcon,
     CurrencyIcon,
     SearchIcon,
-    FilterIcon
+    FilterIcon,
+    PrinterIcon
 } from './icons/Icons';
 import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO } from '../services/api';
 
@@ -76,6 +78,254 @@ interface GroupedSalesOrder {
     appointmentDate?: string;
     appointmentRequestDate?: string;
 }
+
+const LabelPrintModal: FC<{ so: GroupedSalesOrder, inventoryItems?: InventoryItem[], onClose: () => void }> = ({ so, inventoryItems, onClose }) => {
+    const [printMode, setPrintMode] = useState<'individual' | 'master'>('individual');
+    
+    const totalQty = so.qty;
+    const skuCount = so.items.length;
+    const innerBoxCount = so.boxCount || 0;
+
+    const handlePrint = () => {
+        window.print();
+    };
+
+    const getItemEan = (item: POItem) => {
+        const inv = inventoryItems?.find(i => i.sku === item.masterSku);
+        return inv?.ean || 'N/A';
+    };
+
+    const flattenedLabels = useMemo(() => {
+        const labels: { item: POItem; boxIndex: number; totalBoxes: number }[] = [];
+        so.items.forEach(item => {
+            const boxes = item.eeBoxCount || 1;
+            for (let i = 1; i <= boxes; i++) {
+                labels.push({ item, boxIndex: i, totalBoxes: boxes });
+            }
+        });
+        return labels;
+    }, [so.items]);
+
+    return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[110] p-4">
+            <style>
+                {`
+                @media print {
+                    body * { visibility: hidden; }
+                    .print-area, .print-area * { visibility: visible; }
+                    .print-area { 
+                        position: absolute; 
+                        left: 0; 
+                        top: 0; 
+                        width: 100%;
+                        background: white !important;
+                    }
+                    @page { 
+                        margin: 0;
+                    }
+                    
+                    /* Individual Label: 4x6 Thermal Printer Style from Image */
+                    .label-4x6 {
+                        width: 4in;
+                        height: 6in;
+                        page-break-after: always;
+                        display: flex;
+                        flex-direction: column;
+                        background: white !important;
+                        color: black !important;
+                        font-family: Arial, Helvetica, sans-serif !important;
+                        padding: 0.4in;
+                        margin: 0;
+                    }
+
+                    /* Master Slip: A3 standard */
+                    .slip-a3 {
+                        width: 297mm;
+                        min-height: 420mm;
+                        page-break-after: always;
+                        padding: 1.5cm;
+                        background: white !important;
+                        color: black !important;
+                        display: flex;
+                        flex-direction: column;
+                    }
+                    
+                    @page :first {
+                        size: ${printMode === 'individual' ? '4in 6in' : 'A3'};
+                    }
+                    @page {
+                        size: ${printMode === 'individual' ? '4in 6in' : 'A3'};
+                    }
+
+                    .no-print { display: none !important; }
+                }
+                `}
+            </style>
+
+            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-5xl flex flex-col h-[90vh] overflow-hidden no-print">
+                <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                    <div>
+                        <div className="flex items-center gap-3 mb-1">
+                            <PrinterIcon className="h-6 w-6 text-partners-green" />
+                            <h3 className="text-2xl font-bold text-gray-800">Instamart Label Helper</h3>
+                        </div>
+                        <p className="text-sm text-gray-500 font-medium">SO Ref: <span className="font-bold text-partners-green">{so.id}</span> • Output: {printMode === 'individual' ? '4x6 Thermal' : 'A3 Summary'}</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                         <div className="bg-white p-1 rounded-xl border border-gray-200 flex shadow-sm">
+                            <button 
+                                onClick={() => setPrintMode('individual')}
+                                className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${printMode === 'individual' ? 'bg-partners-green text-white shadow-md' : 'text-gray-500 hover:bg-gray-100'}`}
+                            >
+                                Individual (4x6)
+                            </button>
+                            <button 
+                                onClick={() => setPrintMode('master')}
+                                className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${printMode === 'master' ? 'bg-partners-green text-white shadow-md' : 'text-gray-500 hover:bg-gray-100'}`}
+                            >
+                                Master Pack Slip
+                            </button>
+                        </div>
+                        <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><XCircleIcon className="h-8 w-8 text-gray-400"/></button>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-12 bg-gray-100/50">
+                    <div className={`print-area mx-auto ${printMode === 'individual' ? 'max-w-[4in]' : 'max-w-[297mm]'} space-y-8`}>
+                        {printMode === 'individual' ? (
+                            <div className="space-y-4">
+                                {flattenedLabels.map((entry, idx) => {
+                                    const { item, boxIndex, totalBoxes } = entry;
+                                    const eanValue = getItemEan(item);
+                                    return (
+                                        <div key={idx} className="label-4x6">
+                                            {/* Matching layout of the image provided */}
+                                            <div className="flex justify-between items-start mb-10">
+                                                <h1 className="text-2xl font-bold uppercase tracking-tight">INSTAMART BOX LABEL</h1>
+                                                <h1 className="text-2xl font-bold uppercase tracking-tight">BOX {totalBoxes > 1 ? `${boxIndex}/${totalBoxes}` : `${idx + 1}/${flattenedLabels.length}`}</h1>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4 mb-10">
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-bold text-gray-600 mb-1">PO NUMBER</span>
+                                                    <span className="text-2xl font-bold">{so.poReference}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-bold text-gray-600 mb-1">INVOICE NO.</span>
+                                                    <span className="text-2xl font-bold">{so.invoiceNumber || 'PENDING'}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col mb-10">
+                                                <span className="text-xs font-bold text-gray-600 mb-1">ITEM NAME</span>
+                                                <span className="text-2xl font-bold leading-tight uppercase">{item.itemName}</span>
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-4 mb-10">
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-bold text-gray-600 mb-1 uppercase">SKU Code</span>
+                                                    <span className="text-2xl font-bold">{item.articleCode}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-bold text-gray-600 mb-1 uppercase">QUANTITY</span>
+                                                    <span className="text-2xl font-bold">{item.itemQuantity || item.qty}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-bold text-gray-600 mb-1 uppercase">EAN BARCODE</span>
+                                                    <span className="text-2xl font-bold">{eanValue}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-bold text-gray-600 mb-1 uppercase">BOX ID</span>
+                                                    <span className="text-2xl font-bold">{so.id}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-bold text-gray-600 mb-1 uppercase">PACKED DATE</span>
+                                                    <span className="text-2xl font-bold">{new Date().toLocaleDateString('en-GB')}</span>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Footer Removed */}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="slip-a3">
+                                <div className="text-center pb-12 border-b-8 border-black">
+                                    <h2 className="text-7xl font-bold uppercase tracking-tight">Master Box Pack Slip</h2>
+                                    <p className="text-3xl font-bold text-gray-600 mt-4 italic">CONSOLIDATED INSTAMART SHIPMENT</p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-16 py-12 border-b-4 border-black">
+                                    <div className="space-y-4">
+                                        <label className="text-3xl font-bold text-gray-500 uppercase">PO Number</label>
+                                        <p className="text-7xl font-bold">{so.poReference}</p>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <label className="text-3xl font-bold text-gray-500 uppercase">Invoice Number</label>
+                                        <p className="text-7xl font-bold">{so.invoiceNumber || 'PENDING'}</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-8 py-12 border-b-8 border-black">
+                                    <div className="text-center p-8 bg-gray-50 rounded-3xl">
+                                        <label className="text-2xl font-bold text-gray-500 uppercase">Inner Boxes</label>
+                                        <p className="text-[12rem] font-bold leading-none mt-4">{innerBoxCount}</p>
+                                    </div>
+                                    <div className="text-center p-8 border-x-4 border-gray-200">
+                                        <label className="text-2xl font-bold text-gray-500 uppercase">Unique SKUs</label>
+                                        <p className="text-[12rem] font-bold leading-none mt-4">{skuCount}</p>
+                                    </div>
+                                    <div className="text-center p-8 bg-black text-white rounded-3xl">
+                                        <label className="text-2xl font-bold text-gray-300 uppercase">Total Qty</label>
+                                        <p className="text-[12rem] font-bold leading-none mt-4">{totalQty}</p>
+                                    </div>
+                                </div>
+
+                                <div className="mt-12 overflow-hidden rounded-3xl border-4 border-black">
+                                    <table className="w-full border-collapse">
+                                        <thead>
+                                            <tr className="bg-gray-100">
+                                                <th className="border-b-4 border-black p-8 text-left text-4xl font-bold uppercase">Item Name / Instamart Channel Code</th>
+                                                <th className="border-b-4 border-black p-8 text-right text-4xl font-bold w-64 uppercase">Qty</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {so.items.map((item, idx) => (
+                                                <tr key={idx} className="border-b-2 border-gray-200 last:border-b-0">
+                                                    <td className="p-10 text-3xl font-bold">
+                                                        {item.itemName}
+                                                        <p className="text-2xl font-bold text-partners-green mt-4">Instamart Channel Code: {item.articleCode}</p>
+                                                    </td>
+                                                    <td className="p-10 text-right text-6xl font-bold">
+                                                        {item.itemQuantity || item.qty}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                
+                                {/* Footer Removed */}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="p-8 border-t border-gray-100 bg-white flex justify-end gap-4 shadow-[0_-10px_20px_rgba(0,0,0,0.03)] no-print">
+                    <button onClick={onClose} className="px-8 py-4 text-lg font-bold text-gray-500 hover:bg-gray-100 rounded-2xl transition-all">Cancel</button>
+                    <button onClick={handlePrint} className="px-12 py-4 bg-partners-green text-white text-lg font-bold rounded-2xl shadow-xl shadow-green-100 hover:bg-green-700 transition-all flex items-center gap-3 active:scale-95">
+                        <PrinterIcon className="h-6 w-6" />
+                        Print Selected
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const CopyField = ({ label, value, icon }: { label: string, value: string, icon: React.ReactNode }) => {
     const [copied, setCopied] = useState(false);
@@ -145,12 +395,13 @@ const parseDateString = (dateStr: string | undefined): number => {
     } catch (e) { return 0; }
 };
 
-const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilter, purchaseOrders, setPurchaseOrders, onSync, isSyncing, addLog, addNotification }) => {
+const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilter, purchaseOrders, setPurchaseOrders, onSync, isSyncing, addLog, addNotification, inventoryItems }) => {
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
     const [isCreatingInvoice, setIsCreatingInvoice] = useState<string | null>(null);
     const [isPushingNimbus, setIsPushingNimbus] = useState<string | null>(null);
     const [isRefreshingSo, setIsRefreshingSo] = useState<string | null>(null);
     const [blinkitModal, setBlinkitModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
+    const [labelModal, setLabelModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
     const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
@@ -265,7 +516,9 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     if (!groups[refCode].invoiceDate) groups[refCode].invoiceDate = item.invoiceDate;
                     if (!groups[refCode].manifestDate) groups[refCode].manifestDate = maniDate;
                     if (!groups[refCode].invoiceNumber) groups[refCode].invoiceNumber = invNum;
-                    groups[refCode].boxCount = Math.max(groups[refCode].boxCount, eeBoxCount);
+                    
+                    groups[refCode].boxCount += eeBoxCount;
+
                     if (!groups[refCode].awb && awb) groups[refCode].awb = awb;
                     if (!groups[refCode].trackingStatus && trackingStatus) groups[refCode].trackingStatus = trackingStatus;
                 }
@@ -307,9 +560,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         const poIds = poReference.split(',').map(s => s.trim());
         for (const id of poIds) {
             try {
-                // First trigger targeted fetch from external APIs
                 await syncSinglePO(id);
-                // Then fetch the actual sheet data for this row
                 const updated = await fetchPurchaseOrder(id);
                 if (updated) {
                     setPurchaseOrders(prev => prev.map(p => p.poNumber === id ? updated : p));
@@ -344,14 +595,13 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         try {
             const res = await pushToNimbusPost(eeRef);
             if (res.status === 'success') {
-                // PATCH LOCAL STATE IMMEDIATELY WITH AWB FOR ALL MATCHING PO ITEMS
                 const parentPoNumbers = poRef.split(',').map(s => s.trim());
                 if (res.awb) {
                     setPurchaseOrders(prev => prev.map(po => {
                         if (parentPoNumbers.includes(po.poNumber)) {
                             return {
                                 ...po,
-                                awb: res.awb, // Optimization: assume single AWB for batch
+                                awb: res.awb,
                                 items: po.items?.map(item => 
                                     item.eeReferenceCode === eeRef ? { ...item, awb: res.awb } : item
                                 )
@@ -360,11 +610,8 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         return po;
                     }));
                 }
-
                 addNotification(res.message || 'Pushed to Nimbus.', 'success');
                 addLog('Nimbus Shipping', `EE Ref: ${eeRef}`);
-                
-                // Background update for full metadata
                 refreshSingleSOState(poRef);
             } else {
                 addNotification('Shipping Error: ' + res.message, 'error');
@@ -405,6 +652,8 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm">
             {blinkitModal.isOpen && blinkitModal.so && <BlinkitAppointmentModal so={blinkitModal.so} onClose={() => setBlinkitModal({ isOpen: false, so: null })} />}
+            {labelModal.isOpen && labelModal.so && <LabelPrintModal so={labelModal.so} inventoryItems={inventoryItems} onClose={() => setLabelModal({ isOpen: false, so: null })} />}
+            
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
                 <div className="flex flex-wrap items-center gap-2">
                     {tabs.map(tab => (
@@ -443,6 +692,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 const totalAmountIncTax = so.amount * 1.05;
                                 const action = getPrimaryAction(so);
                                 const isRefreshing = isRefreshingSo === so.poReference;
+                                const isInstamart = so.channel.toLowerCase().includes('instamart');
 
                                 return (
                                     <Fragment key={so.id}>
@@ -450,13 +700,24 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                             <td className="p-4 text-center sticky left-0 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]"><div className="text-gray-400 hover:text-partners-green">{isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}</div></td>
                                             <td className="px-6 py-4 font-bold text-blue-600 whitespace-nowrap sticky left-12 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">{so.id}</td>
                                             <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${so.status === 'Returned' ? 'bg-red-100 text-red-700' : so.status === 'Shipped' ? 'bg-emerald-100 text-emerald-700' : so.status === 'Label Generated' ? 'bg-amber-100 text-amber-700' : so.status === 'Box Data Upload Pending' ? 'bg-red-50 text-red-700 border border-red-100' : so.status === 'Invoiced' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>{so.status}</span></td>
-                                            <td className="px-6 py-4">{so.channel}</td>
+                                            <td className="px-6 py-4 font-medium text-gray-800">{so.channel}</td>
                                             <td className="px-6 py-4">{so.storeCode}</td>
                                             <td className="px-6 py-4 font-medium text-gray-900">{so.qty} / ₹{totalAmountIncTax.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-gray-400">{so.orderDate}</td>
                                             <td className="px-6 py-4 text-center sticky right-0 z-10 bg-inherit border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)]" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex items-center justify-center gap-2">
                                                     <button onClick={(e) => { e.stopPropagation(); action.onClick?.(); }} disabled={action.disabled} className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap ${action.color} ${action.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>{action.label}</button>
+                                                    
+                                                    {isInstamart && (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); setLabelModal({ isOpen: true, so }); }}
+                                                            className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-100 hover:bg-indigo-100"
+                                                            title="Generate Instamart Box Labels"
+                                                        >
+                                                            <PrinterIcon className="h-4 w-4" />
+                                                        </button>
+                                                    )}
+                                                    
                                                     <button className="text-gray-400 hover:text-gray-600 p-1"><DotsVerticalIcon className="h-4 w-4" /></button>
                                                 </div>
                                             </td>
@@ -511,7 +772,21 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                             </div>
                                                         </div>
                                                         <div className="pt-6 border-t border-gray-100">
-                                                            <div className="flex justify-between items-center mb-4"><h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><GlobeIcon className="h-4 w-4 text-blue-600" /> Logistics & Shipment Status</h4>{(so.invoiceNumber && !so.awb && so.boxCount > 0) && <button onClick={() => handlePushToNimbusAction(so.id, so.poReference)} disabled={!!isPushingNimbus} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95">{isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}{isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post'}</button>}</div>
+                                                            <div className="flex justify-between items-center mb-4">
+                                                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><GlobeIcon className="h-4 w-4 text-blue-600" /> Logistics & Shipment Status</h4>
+                                                                <div className="flex items-center gap-3">
+                                                                    {isInstamart && (
+                                                                        <button 
+                                                                            onClick={() => setLabelModal({ isOpen: true, so })}
+                                                                            className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-indigo-700 transition-all active:scale-95"
+                                                                        >
+                                                                            <PrinterIcon className="h-3 w-3" />
+                                                                            Generate Box Labels
+                                                                        </button>
+                                                                    )}
+                                                                    {(so.invoiceNumber && !so.awb && so.boxCount > 0) && <button onClick={() => handlePushToNimbusAction(so.id, so.poReference)} disabled={!!isPushingNimbus} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95">{isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}{isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post'}</button>}
+                                                                </div>
+                                                            </div>
                                                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                                                                 <div className={`p-4 rounded-xl border transition-all ${so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{so.boxCount || 0}</p></div></div></div>
                                                                 <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100"><p className="text-[10px] font-bold text-indigo-400 uppercase mb-2">Appointment Date</p><div className="flex flex-col h-full"><div className="flex items-center gap-2"><CalendarIcon className={`h-4 w-4 ${so.appointmentDate ? 'text-indigo-600' : 'text-gray-300'}`} /><p className={`text-sm font-bold ${so.appointmentDate ? 'text-indigo-700' : 'text-gray-400'}`}>{so.appointmentDate || so.appointmentRequestDate || 'Pending'}</p></div><p className="text-[9px] text-indigo-400 font-medium mt-1 uppercase tracking-tighter">{so.appointmentDate ? 'Confirmed' : so.appointmentRequestDate ? 'Requested' : 'To be Scheduled'}</p></div></div>
