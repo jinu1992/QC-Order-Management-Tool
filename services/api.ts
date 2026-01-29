@@ -7,6 +7,9 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbwBDSNnN_xKlZc4cTwwKthd
  */
 const postToScript = async (payload: any) => {
     if (!API_URL || API_URL.includes('YOUR_SCRIPT_ID')) throw new Error("API URL is not configured.");
+    
+    console.log(`[API] Executing ${payload.action}:`, payload);
+    
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -14,10 +17,15 @@ const postToScript = async (payload: any) => {
             redirect: 'follow',
             body: JSON.stringify(payload)
         });
-        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+        
+        if (!response.ok) {
+            console.error(`[API] HTTP Error ${response.status}: ${response.statusText}`);
+            throw new Error(`Server returned status ${response.status}`);
+        }
+        
         return response;
     } catch (error: any) {
-        console.error("Fetch implementation failed:", error);
+        console.error("[API] Network/Script Failure:", error);
         throw error;
     }
 };
@@ -248,7 +256,7 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
             eeOrderRefId: row['EE Order Ref ID'] || row['EE_Order_Ref_ID'],
             eeReferenceCode: row['EE_reference_code'], 
             eeOrderDate: formatSheetDate(row['EE_order_date']),
-            itemStatus: row['EE_item_item_status'],
+            itemStatus: row['EE_item_item_status'] || (rawStatus === 'Cancelled' ? 'Cancelled' : undefined),
             itemQuantity: Number(row['EE_item_item_quantity'] || 0),
             cancelledQuantity: Number(row['EE_item_cancelled_quantity'] || 0),
             shippedQuantity: Number(row['EE_item_shipped_quantity'] || 0),
@@ -282,6 +290,9 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
             po.items?.push(item);
             po.qty += qty;
             po.amount += itemAmount;
+            if (po.status === POStatus.Cancelled && status !== POStatus.Cancelled) {
+                po.status = status;
+            }
         } else {
             poMap.set(poNumber, {
                 id: poNumber,
@@ -373,6 +384,16 @@ export const updatePOStatus = async (poNumber: string, status: string) => {
         action: 'updatePOStatus', 
         poNumber,
         status
+    });
+    return await response.json();
+};
+
+export const cancelPOLineItem = async (poNumber: string, articleCode: string) => {
+    console.log(`[API] Triggering cancelPOLineItem for PO: ${poNumber}, SKU: ${articleCode}`);
+    const response = await postToScript({ 
+        action: 'cancelLineItem', 
+        poNumber: String(poNumber).trim(),
+        articleCode: String(articleCode).trim()
     });
     return await response.json();
 };

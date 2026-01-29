@@ -105,11 +105,80 @@ function doPost(e) {
     if (action === 'syncSinglePO') return handleSyncSinglePO(data.poNumber);
     if (action === 'updatePOStatus') return updatePOStatus(data.poNumber, data.status);
     if (action === 'syncInventory') return handleSyncInventory();
+    if (action === 'cancelLineItem') return handleCancelLineItem(data.poNumber, data.articleCode);
     
     return responseJSON({status: 'error', message: 'Invalid action: ' + action});
   } catch (error) {
     return responseJSON({status: 'error', message: "doPost Error: " + error.toString()});
   }
+}
+
+/**
+ * Robustly handles line-item cancellation.
+ * Targets 'EE_item_item_status' for pushed items, or 'Status' as a fallback.
+ */
+function handleCancelLineItem(poNumber, articleCode) {
+    console.log(`[GAS-CANCEL] Request Received for PO: ${poNumber}, SKU: ${articleCode}`);
+    try {
+        const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+        const sheet = ss.getSheetByName(SHEET_PO_DB);
+        if (!sheet) throw new Error("PO_Database sheet not found");
+
+        const data = sheet.getDataRange().getValues();
+        const headers = data[0].map(h => String(h).trim().toLowerCase());
+        
+        // Find indices with flexibility
+        const poNumIdx = headers.indexOf("po number") !== -1 ? headers.indexOf("po number") : headers.indexOf("po_number");
+        const artCodeIdx = headers.indexOf("item code") !== -1 ? headers.indexOf("item code") : (headers.indexOf("article code") !== -1 ? headers.indexOf("article code") : -1);
+        
+        // Determine which status column to update
+        let statusIdx = headers.indexOf("ee_item_item_status");
+        if (statusIdx === -1) {
+            statusIdx = headers.indexOf("status");
+        }
+
+        if (poNumIdx === -1 || artCodeIdx === -1 || statusIdx === -1) {
+            throw new Error(`Schema mismatch. Found Headers: ${headers.join(', ')}`);
+        }
+
+        let updateCount = 0;
+        const targetPo = String(poNumber).trim();
+        const targetSku = String(articleCode).trim();
+
+        for (let i = 1; i < data.length; i++) {
+            const rowPo = String(data[i][poNumIdx]).trim();
+            const rowSku = String(data[i][artCodeIdx]).trim();
+
+            if (rowPo === targetPo && rowSku === targetSku) {
+                console.log(`[GAS-CANCEL] Match found on Row ${i + 1}`);
+                
+                // Update specific status
+                sheet.getRange(i + 1, statusIdx + 1).setValue("Cancelled");
+                
+                // If we updated EE status, also check if we should update global status for non-pushed orders
+                const genericStatusIdx = headers.indexOf("status");
+                if (genericStatusIdx !== -1 && genericStatusIdx !== statusIdx) {
+                   const currentGlobal = String(data[i][genericStatusIdx]).trim().toLowerCase();
+                   if (currentGlobal === "" || currentGlobal === "new" || currentGlobal === "below threshold") {
+                       sheet.getRange(i + 1, genericStatusIdx + 1).setValue("Cancelled");
+                   }
+                }
+                
+                updateCount++;
+            }
+        }
+
+        if (updateCount === 0) {
+            console.warn(`[GAS-CANCEL] No rows matched for ${targetPo} / ${targetSku}`);
+            return responseJSON({ status: 'error', message: `SKU ${targetSku} not found in PO ${targetPo}.` });
+        }
+
+        SpreadsheetApp.flush();
+        return responseJSON({ status: 'success', message: `Successfully cancelled ${updateCount} line(s).` });
+    } catch (e) {
+        console.error(`[GAS-CANCEL] Exception:`, e);
+        return responseJSON({ status: 'error', message: "GAS Exception: " + e.toString() });
+    }
 }
 
 function handleSyncInventory() {
@@ -157,7 +226,6 @@ function handleSyncSinglePO(poNumber) {
             fetchSingleEasyEcomShipment(poNumber);
             return responseJSON({ status: 'success', message: `Sync for PO ${poNumber} triggered.` });
         } else {
-            // Fallback: If single fetch not available, we can't do much without triggering full sync which we want to avoid
             return responseJSON({ status: 'error', message: 'Targeted PO sync function not found in GAS.' });
         }
     } catch (e) {
