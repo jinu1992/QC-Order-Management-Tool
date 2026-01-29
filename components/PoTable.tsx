@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, Fragment, useMemo, useRef } from 'react';
 import { POStatus, type PurchaseOrder, POItem, InventoryItem, ChannelConfig } from '../types';
 import StatusBadge from './StatusBadge';
@@ -42,29 +43,25 @@ const parseDate = (dateStr: string | undefined): number => {
 
 const getCalculatedStatus = (po: PurchaseOrder): POStatus => {
     const items = po.items || [];
-    const activeItems = items.filter(i => i.itemStatus !== 'Cancelled');
-    
-    // 1. Check if all items are explicitly cancelled
-    if (items.length > 0 && activeItems.length === 0) return POStatus.Cancelled;
+    const activeItems = items.filter(i => (i.itemStatus || '').toLowerCase() !== 'cancelled');
+    const pushedItems = activeItems.filter(i => !!i.eeOrderRefId);
     
     const rawStatus = String(po.status || '').trim().toLowerCase();
+
+    // 1. Check if all items are explicitly cancelled or whole PO cancelled
+    if (rawStatus === 'cancelled' || (items.length > 0 && activeItems.length === 0)) return POStatus.Cancelled;
     
-    // 2. Explicitly cancelled whole PO
-    if (rawStatus === 'cancelled') return POStatus.Cancelled;
-    
-    // 3. Mark as Below Threshold if explicitly stated
+    // 2. Below threshold
     if (rawStatus === 'below threshold') return POStatus.BelowThreshold;
 
-    // 4. Confirmation workflow statuses
+    // 3. Pushed logic (Ignoring cancelled items)
+    if (activeItems.length > 0 && pushedItems.length === activeItems.length) return POStatus.Pushed;
+    if (pushedItems.length > 0) return POStatus.PartiallyProcessed;
+
+    // 4. Other workflow statuses
     if (rawStatus === 'confirmed' || rawStatus === 'confirmed to send') return POStatus.ConfirmedToSend;
     if (rawStatus === 'waiting for confirmation') return POStatus.WaitingForConfirmation;
     
-    // 5. Pushed status (ignoring cancelled items)
-    const pushedCount = activeItems.filter(i => !!i.eeOrderRefId).length;
-    if (activeItems.length > 0 && pushedCount === activeItems.length) return POStatus.Pushed;
-    if (pushedCount > 0) return POStatus.PartiallyProcessed;
-    
-    // 6. Default
     return POStatus.NewPO; 
 };
 
@@ -106,7 +103,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
     const poStatus = getCalculatedStatus(po);
     const amountIncTax = po.amount * 1.05;
     const items = po.items || [];
-    const selectableItems = items.filter(i => !i.eeOrderRefId && i.itemStatus !== 'Cancelled' && (i.fulfillableQty ?? 0) >= i.qty);
+    const selectableItems = items.filter(i => !i.eeOrderRefId && (i.itemStatus || '').toLowerCase() !== 'cancelled' && (i.fulfillableQty ?? 0) >= i.qty);
     const selectedCount = items.filter(i => isSelected(i.articleCode)).length;
     const effectiveDate = po.orderDate || 'N/A';
 
@@ -122,6 +119,24 @@ const OrderRow: React.FC<OrderRowProps> = ({
         if (isMenuOpen) document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isMenuOpen]);
+
+    const handleTrashClick = (e: React.MouseEvent, articleCode: string) => {
+        // Prevent row expansion
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const cleanCode = articleCode.trim();
+        console.log('[UI-TRASH-CLICK] SKU:', cleanCode, 'PO:', po.poNumber);
+        
+        // Use synchronous window.confirm to ensure it triggers correctly
+        const isConfirmed = window.confirm(`Cancel SKU ${cleanCode} in PO ${po.poNumber}? This item will be removed from fulfillment eligibility.`);
+        
+        if (isConfirmed) {
+            onCancelLineItem(articleCode);
+        } else {
+            console.log('[UI] User cancelled confirmation for SKU:', cleanCode);
+        }
+    };
 
     // Primary Action Logic
     let actionLabel = 'View Details';
@@ -159,7 +174,6 @@ const OrderRow: React.FC<OrderRowProps> = ({
         isDisabled = isPushing;
     }
 
-    // Threshold logic from Admin Channel Config
     const config = channelConfigs.find(c => c.channelName === po.channel);
     const actualBelowThreshold = config ? po.amount < config.minOrderThreshold : false;
     const canMarkThreshold = poStatus === POStatus.NewPO && actualBelowThreshold;
@@ -334,7 +348,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                     <tbody className="divide-y divide-gray-100">
                                         {items.map((item, idx) => {
                                             const isPushed = !!item.eeOrderRefId;
-                                            const isCancelled = item.itemStatus === 'Cancelled';
+                                            const isCancelled = (item.itemStatus || '').toLowerCase() === 'cancelled';
                                             const isFullyFulfillable = (item.fulfillableQty ?? 0) >= item.qty;
                                             const unitPriceIncTax = ((item.unitCost || 0) * 1.05).toFixed(2);
                                             const checked = isSelected(item.articleCode);
@@ -390,17 +404,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                                                     <span className="text-gray-400 text-[10px] font-bold uppercase tracking-tight">Pending</span>
                                                                     <button 
                                                                         type="button"
-                                                                        data-ignore-toggle="true"
-                                                                        onClick={(e) => { 
-                                                                            e.stopPropagation(); 
-                                                                            e.preventDefault(); 
-                                                                            // Extra safety: stop immediate to ensure parent TR never receives this
-                                                                            if (e.nativeEvent && e.nativeEvent.stopImmediatePropagation) {
-                                                                                e.nativeEvent.stopImmediatePropagation();
-                                                                            }
-                                                                            console.log('[UI-TRASH-CLICK] SKU:', cleanCode, 'PO:', po.poNumber);
-                                                                            onCancelLineItem(item.articleCode); 
-                                                                        }}
+                                                                        onClick={(e) => handleTrashClick(e, cleanCode)}
                                                                         disabled={isPushing || isProcessingLine}
                                                                         className="relative z-[60] p-2 text-red-500 bg-red-50 hover:text-white hover:bg-red-500 rounded-lg transition-all shadow-sm active:scale-90 flex items-center justify-center border border-red-100 cursor-pointer pointer-events-auto"
                                                                         title="Cancel this SKU"
@@ -517,7 +521,6 @@ const PoTable: React.FC<PoTableProps> = ({
             orders = orders.filter(po => String((po as any)[key] || '').toLowerCase().includes(val));
         });
         
-        // Sorting by newest PO Date first (Descending)
         orders.sort((a, b) => {
             const dateA = parseDate(a.orderDate);
             const dateB = parseDate(b.orderDate);
@@ -564,7 +567,7 @@ const PoTable: React.FC<PoTableProps> = ({
 
     const handleSelectAll = (po: PurchaseOrder) => {
         const selectable = (po.items || [])
-            .filter(i => !i.eeOrderRefId && i.itemStatus !== 'Cancelled' && (i.fulfillableQty ?? 0) >= i.qty)
+            .filter(i => !i.eeOrderRefId && (i.itemStatus || '').toLowerCase() !== 'cancelled' && (i.fulfillableQty ?? 0) >= i.qty)
             .map(i => i.articleCode);
         const current = selectedPoItems[po.id] || [];
         const allSelected = selectable.length > 0 && current.length === selectable.length;
@@ -605,27 +608,17 @@ const PoTable: React.FC<PoTableProps> = ({
         if (!articleCode) return;
         
         const cleanCode = articleCode.trim();
-        console.log(`[HANDLING-CANCEL] Starting flow for PO ${po.poNumber} SKU ${cleanCode}`);
-        
-        if (!window.confirm(`Cancel item ${cleanCode} in PO ${po.poNumber}?`)) {
-            console.log('[HANDLING-CANCEL] User aborted confirmation');
-            return;
-        }
-        
         const lineId = `${po.poNumber}-${cleanCode}`;
         setCancellingLineItemId(lineId);
         
+        console.log(`[HANDLING-CANCEL] Processing SKU ${cleanCode} for PO ${po.poNumber}`);
+        
         try {
-            console.log(`[HANDLING-CANCEL] Calling cancelPOLineItem API...`);
             const res = await cancelPOLineItem(po.poNumber, cleanCode);
-            console.log(`[HANDLING-CANCEL] API Response:`, res);
             
             if (res.status === 'success') {
-                console.log('[HANDLING-CANCEL] Success. Patching local state...');
-                
-                // Deep reference update to force React render
                 setPurchaseOrders(prev => {
-                    const newOrders = prev.map(p => {
+                    const freshArray = prev.map(p => {
                         if (p.poNumber === po.poNumber) {
                             const updatedItems = (p.items || []).map(item => {
                                 if (item.articleCode.trim() === cleanCode) {
@@ -633,24 +626,22 @@ const PoTable: React.FC<PoTableProps> = ({
                                 }
                                 return item;
                             });
-                            // Return NEW object reference
                             return { ...p, items: updatedItems };
                         }
                         return p;
                     });
-                    return [...newOrders];
+                    return [...freshArray];
                 });
                 
                 addNotification(`Item ${cleanCode} cancelled.`, 'success');
                 addLog('Line Item Cancelled', `SKU ${cleanCode} in PO ${po.poNumber} marked as Cancelled`);
                 
-                // Background refresh
-                setTimeout(() => refreshSinglePOState(po.poNumber), 1000);
+                setTimeout(() => refreshSinglePOState(po.poNumber), 500);
             } else {
                 addNotification('Cancellation Failed: ' + res.message, 'error');
             }
         } catch (e: any) {
-            console.error(`[HANDLING-CANCEL] Critical Error:`, e);
+            console.error(`[HANDLING-CANCEL] API Error:`, e);
             addNotification('Error: ' + (e.message || 'Network failure'), 'error');
         } finally {
             setCancellingLineItemId(null);

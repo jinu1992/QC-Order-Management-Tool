@@ -130,26 +130,41 @@ const App: React.FC = () => {
   }, [activeView]);
 
   const getCalculatedStatus = (po: PurchaseOrder): POStatus => {
-    const rawStatus = String(po.status || '').trim().toLowerCase();
-    if (rawStatus === 'cancelled') return POStatus.Cancelled;
-    if (rawStatus === 'below threshold') return POStatus.BelowThreshold;
-    if (rawStatus === 'confirmed to send') return POStatus.ConfirmedToSend;
-    if (rawStatus === 'waiting for confirmation') return POStatus.WaitingForConfirmation;
-
     const items = po.items || [];
-    const pushedCount = items.filter(i => !!i.eeOrderRefId).length;
-    if (items.length > 0 && pushedCount === items.length) return POStatus.Pushed;
-    if (pushedCount > 0) return POStatus.PartiallyProcessed;
+    const activeItems = items.filter(i => (i.itemStatus || '').toLowerCase() !== 'cancelled');
+    const pushedItems = activeItems.filter(i => !!i.eeOrderRefId);
+    
+    const rawStatus = String(po.status || '').trim().toLowerCase();
+
+    // 1. Check if all items are explicitly cancelled or whole PO cancelled
+    if (rawStatus === 'cancelled' || (items.length > 0 && activeItems.length === 0)) return POStatus.Cancelled;
+    
+    // 2. Below threshold
+    if (rawStatus === 'below threshold') return POStatus.BelowThreshold;
+
+    // 3. Pushed logic (Ignoring cancelled items)
+    if (activeItems.length > 0 && pushedItems.length === activeItems.length) return POStatus.Pushed;
+    if (pushedItems.length > 0) return POStatus.PartiallyProcessed;
+
+    // 4. Other workflow statuses
+    if (rawStatus === 'confirmed' || rawStatus === 'confirmed to send') return POStatus.ConfirmedToSend;
+    if (rawStatus === 'waiting for confirmation') return POStatus.WaitingForConfirmation;
+    
     return POStatus.NewPO;
   };
 
   const summaryData = useMemo(() => {
-    const totalActive = purchaseOrders.filter(p => p.status !== POStatus.Closed && p.status !== POStatus.Cancelled).length;
+    const activePOs = purchaseOrders.filter(p => {
+        const status = getCalculatedStatus(p);
+        return status !== POStatus.Closed && status !== POStatus.Cancelled;
+    });
+    
+    const totalActiveCount = activePOs.length;
     const pushed = purchaseOrders.filter(p => getCalculatedStatus(p) === POStatus.Pushed).length;
     const partiallyPushed = purchaseOrders.filter(p => getCalculatedStatus(p) === POStatus.PartiallyProcessed).length;
 
     return [
-      { title: 'Total Active POs', value: totalActive.toString(), change: 'Across all stages', color: 'blue', targetView: 'Purchase Orders', targetFilter: 'All POs' },
+      { title: 'Total Active POs', value: totalActiveCount.toString(), change: 'Across all stages', color: 'blue', targetView: 'Purchase Orders', targetFilter: 'All POs' },
       { title: 'Fully Pushed', value: pushed.toString(), change: 'To EasyEcom', color: 'green', targetView: 'Purchase Orders', targetFilter: 'Pushed POs' },
       { title: 'Partially Pushed', value: partiallyPushed.toString(), change: 'Pending items', color: 'yellow', targetView: 'Purchase Orders', targetFilter: 'Partially Pushed POs' },
     ];

@@ -114,31 +114,27 @@ function doPost(e) {
 }
 
 /**
- * Robustly handles line-item cancellation.
- * Targets 'EE_item_item_status' for pushed items, or 'Status' as a fallback.
+ * Enhanced line-item cancellation.
+ * Targets both 'EE_item_item_status' and global 'Status' to ensure consistency for unpushed POs.
  */
 function handleCancelLineItem(poNumber, articleCode) {
-    console.log(`[GAS-CANCEL] Request Received for PO: ${poNumber}, SKU: ${articleCode}`);
+    console.log(`[GAS-CANCEL] Executing Cancel for PO: ${poNumber}, Article: ${articleCode}`);
     try {
         const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
         const sheet = ss.getSheetByName(SHEET_PO_DB);
         if (!sheet) throw new Error("PO_Database sheet not found");
 
-        const data = sheet.getDataRange().getValues();
+        const fullRange = sheet.getDataRange();
+        const data = fullRange.getValues();
         const headers = data[0].map(h => String(h).trim().toLowerCase());
         
-        // Find indices with flexibility
         const poNumIdx = headers.indexOf("po number") !== -1 ? headers.indexOf("po number") : headers.indexOf("po_number");
-        const artCodeIdx = headers.indexOf("item code") !== -1 ? headers.indexOf("item code") : (headers.indexOf("article code") !== -1 ? headers.indexOf("article code") : -1);
-        
-        // Determine which status column to update
-        let statusIdx = headers.indexOf("ee_item_item_status");
-        if (statusIdx === -1) {
-            statusIdx = headers.indexOf("status");
-        }
+        const artCodeIdx = headers.indexOf("item code") !== -1 ? headers.indexOf("item code") : headers.indexOf("article code");
+        const lineStatusIdx = headers.indexOf("ee_item_item_status");
+        const globalStatusIdx = headers.indexOf("status");
 
-        if (poNumIdx === -1 || artCodeIdx === -1 || statusIdx === -1) {
-            throw new Error(`Schema mismatch. Found Headers: ${headers.join(', ')}`);
+        if (poNumIdx === -1 || artCodeIdx === -1) {
+            throw new Error(`Critical columns missing. Found: ${headers.join(', ')}`);
         }
 
         let updateCount = 0;
@@ -150,18 +146,19 @@ function handleCancelLineItem(poNumber, articleCode) {
             const rowSku = String(data[i][artCodeIdx]).trim();
 
             if (rowPo === targetPo && rowSku === targetSku) {
-                console.log(`[GAS-CANCEL] Match found on Row ${i + 1}`);
+                console.log(`[GAS-CANCEL] Updating match on row ${i + 1}`);
                 
-                // Update specific status
-                sheet.getRange(i + 1, statusIdx + 1).setValue("Cancelled");
+                // Update line-level status if column exists
+                if (lineStatusIdx !== -1) {
+                    sheet.getRange(i + 1, lineStatusIdx + 1).setValue("Cancelled");
+                }
                 
-                // If we updated EE status, also check if we should update global status for non-pushed orders
-                const genericStatusIdx = headers.indexOf("status");
-                if (genericStatusIdx !== -1 && genericStatusIdx !== statusIdx) {
-                   const currentGlobal = String(data[i][genericStatusIdx]).trim().toLowerCase();
-                   if (currentGlobal === "" || currentGlobal === "new" || currentGlobal === "below threshold") {
-                       sheet.getRange(i + 1, genericStatusIdx + 1).setValue("Cancelled");
-                   }
+                // Also update global status if it's currently New or Below Threshold
+                if (globalStatusIdx !== -1) {
+                    const currentVal = String(data[i][globalStatusIdx]).trim().toLowerCase();
+                    if (currentVal === "" || currentVal === "new" || currentVal === "below threshold") {
+                        sheet.getRange(i + 1, globalStatusIdx + 1).setValue("Cancelled");
+                    }
                 }
                 
                 updateCount++;
@@ -169,15 +166,14 @@ function handleCancelLineItem(poNumber, articleCode) {
         }
 
         if (updateCount === 0) {
-            console.warn(`[GAS-CANCEL] No rows matched for ${targetPo} / ${targetSku}`);
             return responseJSON({ status: 'error', message: `SKU ${targetSku} not found in PO ${targetPo}.` });
         }
 
         SpreadsheetApp.flush();
-        return responseJSON({ status: 'success', message: `Successfully cancelled ${updateCount} line(s).` });
+        return responseJSON({ status: 'success', message: `Cancelled ${updateCount} matching line(s).` });
     } catch (e) {
-        console.error(`[GAS-CANCEL] Exception:`, e);
-        return responseJSON({ status: 'error', message: "GAS Exception: " + e.toString() });
+        console.error(`[GAS-CANCEL] Fatal Error:`, e);
+        return responseJSON({ status: 'error', message: "GAS Failure: " + e.toString() });
     }
 }
 
