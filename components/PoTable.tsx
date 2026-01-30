@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, Fragment, useMemo, useRef } from 'react';
 import { POStatus, type PurchaseOrder, POItem, InventoryItem, ChannelConfig } from '../types';
 import StatusBadge from './StatusBadge';
@@ -121,20 +120,14 @@ const OrderRow: React.FC<OrderRowProps> = ({
     }, [isMenuOpen]);
 
     const handleTrashClick = (e: React.MouseEvent, articleCode: string) => {
-        // Prevent row expansion
         e.preventDefault();
         e.stopPropagation();
         
         const cleanCode = articleCode.trim();
-        console.log('[UI-TRASH-CLICK] SKU:', cleanCode, 'PO:', po.poNumber);
-        
-        // Use synchronous window.confirm to ensure it triggers correctly
         const isConfirmed = window.confirm(`Cancel SKU ${cleanCode} in PO ${po.poNumber}? This item will be removed from fulfillment eligibility.`);
         
         if (isConfirmed) {
             onCancelLineItem(articleCode);
-        } else {
-            console.log('[UI] User cancelled confirmation for SKU:', cleanCode);
         }
     };
 

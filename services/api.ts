@@ -1,3 +1,4 @@
+
 import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePocMapping, User, UploadMetadata } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbwBDSNnN_xKlZc4cTwwKthd7-Nq8IE83csNdNHODP55EnVEz-gfWzcvzYdxGeNbJSPzZQ/exec'; 
@@ -27,6 +28,18 @@ const postToScript = async (payload: any) => {
     } catch (error: any) {
         console.error("[API] Network/Script Failure:", error);
         throw error;
+    }
+};
+
+export const fetchPackingData = async (referenceCode: string): Promise<any[]> => {
+    try {
+        const url = `${API_URL}?action=getPackingData&referenceCode=${encodeURIComponent(referenceCode)}`;
+        const response = await fetch(url, { method: 'GET', redirect: 'follow', mode: 'cors' });
+        const json = await response.json();
+        return json.status === 'success' ? json.data : [];
+    } catch (error) {
+        console.error("Failed to fetch packing data", error);
+        return [];
     }
 };
 

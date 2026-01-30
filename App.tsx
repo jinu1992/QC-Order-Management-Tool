@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -154,19 +153,18 @@ const App: React.FC = () => {
   };
 
   const summaryData = useMemo(() => {
-    const activePOs = purchaseOrders.filter(p => {
+    const totalActiveCount = purchaseOrders.filter(p => {
         const status = getCalculatedStatus(p);
         return status !== POStatus.Closed && status !== POStatus.Cancelled;
-    });
+    }).length;
     
-    const totalActiveCount = activePOs.length;
     const pushed = purchaseOrders.filter(p => getCalculatedStatus(p) === POStatus.Pushed).length;
     const partiallyPushed = purchaseOrders.filter(p => getCalculatedStatus(p) === POStatus.PartiallyProcessed).length;
 
     return [
-      { title: 'Total Active POs', value: totalActiveCount.toString(), change: 'Across all stages', color: 'blue', targetView: 'Purchase Orders', targetFilter: 'All POs' },
-      { title: 'Fully Pushed', value: pushed.toString(), change: 'To EasyEcom', color: 'green', targetView: 'Purchase Orders', targetFilter: 'Pushed POs' },
-      { title: 'Partially Pushed', value: partiallyPushed.toString(), change: 'Pending items', color: 'yellow', targetView: 'Purchase Orders', targetFilter: 'Partially Pushed POs' },
+      { title: 'Total Active POs', value: totalActiveCount.toString(), changeText: 'Across all stages', color: 'blue', targetView: 'Purchase Orders', targetFilter: 'All POs' },
+      { title: 'Fully Pushed', value: pushed.toString(), changeText: 'To EasyEcom', color: 'green', targetView: 'Purchase Orders', targetFilter: 'Pushed POs' },
+      { title: 'Partially Pushed', value: partiallyPushed.toString(), changeText: 'Pending items', color: 'yellow', targetView: 'Purchase Orders', targetFilter: 'Partially Pushed POs' },
     ];
   }, [purchaseOrders]);
 

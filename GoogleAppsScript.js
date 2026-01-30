@@ -1,3 +1,4 @@
+
 const SHEET_PO_DB = "PO_Database";
 const SHEET_INVENTORY = "Master_SKU_Mapping";
 const SHEET_CHANNEL_CONFIG = "Channel_Config";
@@ -5,6 +6,7 @@ const SHEET_USERS = "Users";
 const SHEET_UPLOAD_LOGS = "Upload_Logs";
 const SHEET_PO_REPOSITORY = "PO_Repository";
 const LOG_DEBUG_SHEET = "System_Logs";
+const SHEET_PACKING_DATA = "Master_Packing_Data";
 
 const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet() ? SpreadsheetApp.getActiveSpreadsheet().getId() : "10pI-pT9-7l3mD9XqR9vLwT3KxY9Mv6A8fN2u-b0vA4I"; 
 
@@ -20,7 +22,39 @@ function doGet(e) {
   if (action === 'getSystemConfig') return getSystemConfig();
   if (action === 'getUsers') return getUsers();
   if (action === 'getUploadMetadata') return getUploadMetadata();
+  if (action === 'getPackingData') {
+    const refCode = e.parameter.referenceCode;
+    return getPackingData(refCode);
+  }
   return responseJSON({status: 'error', message: 'Invalid action'});
+}
+
+function getPackingData(referenceCode) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_PACKING_DATA);
+  if (!sheet) return responseJSON({status: 'error', message: `Sheet "${SHEET_PACKING_DATA}" not found.`});
+  
+  const rawData = sheet.getDataRange().getValues();
+  if (rawData.length <= 1) return responseJSON({status: 'success', data: []});
+  
+  const headers = rawData[0];
+  const refCodeIdx = headers.indexOf("Reference Code");
+
+  const data = [];
+  for (let i = 1; i < rawData.length; i++) {
+    const row = rawData[i];
+    if (row.every(cell => cell === "")) continue;
+    
+    if (referenceCode && refCodeIdx !== -1 && String(row[refCodeIdx]).trim() !== String(referenceCode).trim()) {
+        continue;
+    }
+
+    const obj = {};
+    for (let j = 0; j < headers.length; j++) { obj[headers[j]] = row[j]; }
+    data.push(obj);
+  }
+  
+  return responseJSON({status: 'success', data: data});
 }
 
 /**
