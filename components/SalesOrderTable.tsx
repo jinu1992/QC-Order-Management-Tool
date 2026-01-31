@@ -1,3 +1,5 @@
+
+
 import React, { useState, Fragment, useMemo, FC, useRef, useEffect } from 'react';
 import { type PurchaseOrder, type InventoryItem, POItem } from '../types';
 import { 
@@ -78,6 +80,7 @@ interface GroupedSalesOrder {
     boxCount: number;
     appointmentDate?: string;
     appointmentRequestDate?: string;
+    ewb?: string;
 }
 
 // --- Combined Instamart Label Printing ---
@@ -96,7 +99,8 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
     }, [so.id]);
 
     // Group items by Box ID, Map SKU to Item Code, and CONSOLIDATE QUANTITIES
-    const groupedBoxes = useMemo(() => {
+    // Fix: Explicitly typing the record to avoid 'unknown' type issues during iteration (Line 127)
+    const groupedBoxes: Record<string, any[]> = useMemo(() => {
         const boxes: Record<string, any[]> = {};
         
         packingData.forEach(row => {
@@ -127,7 +131,8 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
     }, [packingData, so.items]);
 
     const handlePrintPack = () => {
-        const boxEntries = Object.entries(groupedBoxes);
+        // Fix: Typing Object.entries to resolve 'unknown' errors on line 249
+        const boxEntries = Object.entries(groupedBoxes) as [string, any[]][];
         const totalBoxes = boxEntries.length;
         if (totalBoxes === 0) {
             alert("No packing data found for this order ID.");
@@ -171,101 +176,136 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
                 <body>
         `;
 
-        // PAGE 1: MASTER PACKING SLIP
-        html += `
-            <div class="label-container page-break">
-                <div style="padding: 10pt; margin-bottom: 20pt;">
-                    <h1 style="font-size: 20pt;" class="font-bold tracking-tight text-black text-left uppercase">MASTER PACKING SLIP</h1>
-                </div>
+html += `
+  <div class="min-h-screen p-6 font-mono page-break">
 
-                <div class="space-y-6 flex-1">
-                    <div>
-                        <p style="font-size: 9pt;" class="font-bold text-gray-700 uppercase mb-0.5">PO NUMBER</p>
-                        <p style="font-size: 18pt;" class="font-black text-black leading-tight break-all">${so.poReference}</p>
-                    </div>
-                    
-                    <div>
-                        <p style="font-size: 9pt;" class="font-bold text-gray-700 uppercase mb-0.5">INVOICE NO.</p>
-                        <p style="font-size: 18pt;" class="font-black text-black leading-tight break-all">${so.invoiceNumber || 'N/A'}</p>
-                    </div>
-                </div>
+    <!-- HEADER -->
+    <div class="border-b-2 border-black pb-2 mb-4">
+      <p class="text-xl font-black uppercase">
+        MASTER PACKING SLIP
+      </p>
+    </div>
 
-                <div class="grid grid-cols-1 gap-4 pt-6 border-t-2 border-black">
-                    <div class="flex justify-between items-end">
-                        <p style="font-size: 9pt;" class="font-bold text-gray-700 uppercase">TOTAL BOX COUNT</p>
-                        <p style="font-size: 24pt;" class="font-black text-black leading-none">${totalBoxes}</p>
-                    </div>
-                    <div class="flex justify-between items-end">
-                        <p style="font-size: 9pt;" class="font-bold text-gray-700 uppercase">SKU COUNT</p>
-                        <p style="font-size: 24pt;" class="font-black text-black leading-none">${so.items.length}</p>
-                    </div>
-                    <div class="flex justify-between items-end">
-                        <p style="font-size: 9pt;" class="font-bold text-gray-700 uppercase">TOTAL QUANTITY</p>
-                        <p style="font-size: 24pt;" class="font-black text-black leading-none">${so.qty}</p>
-                    </div>
-                </div>
+    <!-- PO / INVOICE -->
+    <div class="space-y-4 mb-6">
+      <div>
+        <p class="text-xs font-bold uppercase">PO Number</p>
+        <p class="text-3xl font-black uppercase">${so.poReference}</p>
+      </div>
+
+      <div>
+        <p class="text-xs font-bold uppercase">Invoice No.</p>
+        <p class="text-3xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p>
+      </div>
+    </div>
+
+    <!-- TOTALS (STACKED, CONSISTENT) -->
+    <div class="border-t-2 border-black pt-4 space-y-4">
+
+      <div>
+        <p class="text-xs font-bold uppercase">Total Box Count</p>
+        <p class="text-3xl font-black">${totalBoxes}</p>
+      </div>
+
+      <div>
+        <p class="text-xs font-bold uppercase">SKU Count</p>
+        <p class="text-3xl font-black">${so.items.length}</p>
+      </div>
+
+      <div>
+        <p class="text-xs font-bold uppercase">Total Quantity</p>
+        <p class="text-3xl font-black">${so.qty}</p>
+      </div>
+
+    </div>
+  </div>
+`;
+
+
+  /* ================= BOX LABELS ================= */
+  boxEntries.forEach(([boxId, items], idx) => {
+    html += `
+    <div class="min-h-screen p-6 font-mono ${idx < totalBoxes - 1 ? 'page-break' : ''}">
+
+      <!-- HEADER -->
+      <div class="flex justify-between items-end gap-4 border-b-2 border-black pb-2 mb-4">
+        <p class="text-xl font-black uppercase">
+          Instamart Box Label
+        </p>
+        <p class="text-xl font-black text-right">
+          BOX ${idx + 1}/${totalBoxes}
+        </p>
+      </div>
+
+      <!-- PO / INVOICE -->
+      <div class="border-b-2 border-black pb-3 mb-4 space-y-3">
+        <div>
+          <p class="text-xs font-bold uppercase">PO Number</p>
+          <p class="text-xl font-black uppercase">${so.poReference}</p>
+        </div>
+
+        <div>
+          <p class="text-xs font-bold uppercase">Invoice No.</p>
+          <p class="text-xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p>
+        </div>
+      </div>
+
+      <!-- SKU DETAILS -->
+      <div class="space-y-4 mb-4">
+        ${items.map(item => `
+          <div class="space-y-2">
+            <div>
+              <p class="text-xs font-bold uppercase">SKU Name</p>
+              <p class="text-xl font-black uppercase">${item.productName}</p>
             </div>
-        `;
 
-        // SUBSEQUENT PAGES: BOX LABELS
-        boxEntries.forEach(([boxId, items], idx) => {
-            html += `
-                <div class="label-container ${idx < totalBoxes - 1 ? 'page-break' : ''}">
-                    <h1 style="font-size: 18pt;" class="font-bold text-black mb-6 uppercase border-b-2 border-black pb-2 leading-none">INSTAMART BOX LABEL</h1>
-                    
-                    <div class="space-y-4 mb-4">
-                        <div>
-                            <p style="font-size: 8pt;" class="font-bold text-gray-500 uppercase mb-0.5">PO NUMBER</p>
-                            <p style="font-size: 18pt;" class="font-black text-black leading-tight">${so.poReference}</p>
-                        </div>
-                        <div>
-                            <p style="font-size: 8pt;" class="font-bold text-gray-500 uppercase mb-0.5">INVOICE NO.</p>
-                            <p style="font-size: 18pt;" class="font-black text-black leading-tight">${so.invoiceNumber || 'N/A'}</p>
-                        </div>
-                    </div>
+            <div>
+              <p class="text-xs font-bold uppercase">SKU Code</p>
+              <p class="text-xl font-black uppercase">${item.itemCode}</p>
+            </div>
 
-                    <div class="flex-1 overflow-hidden">
-                        <p style="font-size: 8pt;" class="font-bold text-gray-500 uppercase mb-2">BOX CONTENTS (${items.length} SKUs)</p>
-                        <table class="w-full item-table">
-                            <thead>
-                                <tr style="font-size: 7pt;" class="text-gray-500 uppercase font-bold">
-                                    <th class="w-2/3 pb-1">Product / Item Code</th>
-                                    <th class="text-center pb-1">Qty</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${items.map(item => `
-                                    <tr>
-                                        <td style="padding: 4pt 0;">
-                                            <p style="font-size: 9pt;" class="font-bold text-black leading-tight">${item.productName}</p>
-                                            <p style="font-size: 14pt;" class="font-black text-black font-mono mt-1 uppercase">CODE: ${item.itemCode}</p>
-                                            <p style="font-size: 11pt;" class="font-bold text-black mt-0.5">EAN: ${item.ean}</p>
-                                        </td>
-                                        <td style="font-size: 18pt;" class="font-black text-center text-black">${item.quantity}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+            <div>
+              <p class="text-xs font-bold uppercase">EAN Barcode</p>
+              <p class="text-xl font-black uppercase">${item.ean}</p>
+            </div>
 
-                    <div class="mt-4 grid grid-cols-2 gap-4 pt-4 border-t-2 border-black">
-                         <div>
-                            <p style="font-size: 8pt;" class="font-bold text-gray-500 uppercase mb-0.5">BOX COUNT</p>
-                            <p style="font-size: 24pt;" class="font-black text-black uppercase leading-none">${idx + 1} OF ${totalBoxes}</p>
-                            <p style="font-size: 7pt;" class="font-bold text-gray-400 mt-1 uppercase">ID: ${boxId}</p>
-                        </div>
-                        <div class="text-right">
-                            <p style="font-size: 8pt;" class="font-bold text-gray-500 uppercase mb-0.5">PACKING DATE</p>
-                            <p style="font-size: 14pt;" class="font-black text-black uppercase">${packingDate}</p>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
+            <div>
+              <p class="text-xs font-bold uppercase">Quantity</p>
+              <p class="text-xl font-black">${item.quantity}</p>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <!-- FOOTER -->
+      <div class="grid grid-cols-2 gap-4 border-t-2 border-black pt-4">
+        <div>
+          <p class="text-xs font-bold uppercase">Box ID</p>
+          <p class="text-lg font-bold">${boxId}</p>
+        </div>
+
+        <div class="text-right">
+          <p class="text-xs font-bold uppercase">Packing Date</p>
+          <p class="text-lg font-bold">${packingDate}</p>
+        </div>
+      </div>
+
+    </div>
+    `;
+  });
+
+
 
         html += `
                     <script>
-                        window.onload = function() { window.print(); window.close(); };
+                        window.onload = function() { 
+                            setTimeout(function() {
+                                window.print(); 
+                                window.onafterprint = function() {
+                                    window.close();
+                                };
+                            }, 500);
+                        };
                     </script>
                 </body>
             </html>
@@ -313,7 +353,8 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
                                 </div>
                             </div>
 
-                            {Object.entries(groupedBoxes).map(([boxId, items], i) => (
+                            {/* Fix: Explicitly casting Object.entries to any[] array to fix 'unknown' errors on line 350 and 352 */}
+                            {(Object.entries(groupedBoxes) as [string, any[]][]).map(([boxId, items], i) => (
                                 <div key={boxId} className="bg-white p-6 border rounded-2xl shadow-sm relative group overflow-hidden flex flex-col border-l-4 border-l-partners-green">
                                     <div className="absolute top-0 right-0 p-2 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">BOX {i+1} OF {Object.keys(groupedBoxes).length}</div>
                                     <div className="mb-4">
@@ -353,6 +394,53 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
                     >
                         <PrinterIcon className="h-5 w-5" /> Print All {Object.keys(groupedBoxes).length + 1} Labels (Master + Box)
                     </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- Shipping Confirmation Modal ---
+
+const ShippingConfirmationModal: FC<{ so: GroupedSalesOrder, onConfirm: () => void, onClose: () => void, onPrint: () => void }> = ({ so, onConfirm, onClose, onPrint }) => {
+    return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[150] p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-amber-100 animate-in fade-in zoom-in-95 duration-200">
+                <div className="p-6 bg-amber-50 border-b border-amber-100 flex flex-col items-center text-center">
+                    <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4">
+                        <AlertIcon className="h-10 w-10 text-amber-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-amber-900 uppercase tracking-tight">Final Label Check!</h3>
+                    <p className="text-xs text-amber-700 mt-1">Order Ref: <span className="font-bold">{so.id}</span></p>
+                </div>
+                <div className="p-8">
+                    <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-100 mb-6 flex gap-4">
+                         <div className="bg-amber-100 p-2.5 rounded-xl h-fit shadow-sm"><PrinterIcon className="h-6 w-6 text-amber-600"/></div>
+                         <div>
+                            <p className="text-sm font-bold text-amber-900">Are the labels pasted on boxes?</p>
+                            <p className="text-xs text-amber-700 mt-1.5 leading-relaxed">For Instamart fulfillment, labels must be physically pasted on all <span className="font-bold text-amber-900 underline">{so.boxCount} boxes</span> before triggering Nimbus shipment.</p>
+                         </div>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                        <button 
+                            onClick={onConfirm}
+                            className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all active:scale-[0.98] text-sm"
+                        >
+                            Yes, Labels Pasted. Ship now.
+                        </button>
+                        <button 
+                            onClick={onPrint}
+                            className="w-full py-3 bg-partners-green/10 text-partners-green font-bold rounded-2xl border border-partners-green/20 hover:bg-partners-green/20 transition-all flex items-center justify-center gap-2 text-sm"
+                        >
+                            <PrinterIcon className="h-4 w-4" /> No, Print Labels First
+                        </button>
+                        <button 
+                            onClick={onClose}
+                            className="w-full py-3 text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            Back to Table
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -436,6 +524,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     const [isRefreshingSo, setIsRefreshingSo] = useState<string | null>(null);
     const [blinkitModal, setBlinkitModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     const [instamartPrintPackModal, setInstamartPrintPackModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
+    const [shippingConfirm, setShippingConfirm] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
     const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
@@ -528,7 +617,8 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         rtoAwb: item.rtoAwb || po.rtoAwb, 
                         boxCount: eeBoxCount,
                         appointmentDate: po.appointmentDate,
-                        appointmentRequestDate: po.appointmentRequestDate
+                        appointmentRequestDate: po.appointmentRequestDate,
+                        ewb: item.ewb || po.ewb
                     };
                 } else {
                     const curPo = String(po.id || '');
@@ -555,6 +645,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
                     if (!groups[refCode].awb && awb) groups[refCode].awb = awb;
                     if (!groups[refCode].trackingStatus && trackingStatus) groups[refCode].trackingStatus = trackingStatus;
+                    if (!groups[refCode].ewb) groups[refCode].ewb = item.ewb || po.ewb;
                 }
                 groups[refCode].items.push(item);
                 groups[refCode].qty += effectiveQty;
@@ -613,7 +704,23 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             if (res.status === 'success') {
                 addNotification(res.message || 'Invoice triggered.', 'success');
                 addLog('Invoice Creation', `EE Ref: ${eeRef}`);
-                await refreshSingleSOState(poRef);
+                
+                // Immediate local state update to "Processing" to show feedback
+                const parentPoNumbers = poRef.split(',').map(s => s.trim());
+                setPurchaseOrders(prev => prev.map(po => {
+                    if (parentPoNumbers.includes(po.poNumber)) {
+                        return {
+                            ...po,
+                            items: po.items?.map(item => 
+                                item.eeReferenceCode === eeRef ? { ...item, invoiceNumber: 'GENERATING...' } : item
+                            )
+                        };
+                    }
+                    return po;
+                }));
+
+                // Follow up with targeted refresh
+                await refreshSinglePOState(poRef);
             } else {
                 addNotification('Error: ' + res.message, 'error');
             }
@@ -630,6 +737,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             const res = await pushToNimbusPost(eeRef);
             if (res.status === 'success') {
                 const parentPoNumbers = poRef.split(',').map(s => s.trim());
+                // Update local state immediately with AWB from response
                 if (res.awb) {
                     setPurchaseOrders(prev => prev.map(po => {
                         if (parentPoNumbers.includes(po.poNumber)) {
@@ -637,7 +745,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 ...po,
                                 awb: res.awb,
                                 items: po.items?.map(item => 
-                                    item.eeReferenceCode === eeRef ? { ...item, awb: res.awb } : item
+                                    item.eeReferenceCode === eeRef ? { ...item, awb: res.awb, carrier: 'Assigned' } : item
                                 )
                             };
                         }
@@ -646,7 +754,9 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 }
                 addNotification(res.message || 'Pushed to Nimbus.', 'success');
                 addLog('Nimbus Shipping', `EE Ref: ${eeRef}`);
-                refreshSingleSOState(poRef);
+                
+                // Follow up with targeted refresh to get full tracking details
+                await refreshSingleSOState(poRef);
             } else {
                 addNotification('Shipping Error: ' + res.message, 'error');
             }
@@ -678,7 +788,32 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         const canInvoice = !so.invoiceNumber && eeStatusLower !== 'open' && (eeStatusLower === 'confirmed' || so.status === 'Batch Created');
 
         if (canInvoice) return { label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', color: 'bg-purple-600 text-white hover:bg-purple-700', onClick: () => handleCreateZohoInvoiceAction(so.id, so.poReference), disabled: isExecuting };
-        if (so.status === 'Invoiced' && !so.awb && so.boxCount > 0) return { label: isPushingNimbus === so.id ? 'Shipping...' : 'Ship Nimbus', color: 'bg-blue-600 text-white hover:bg-blue-700', onClick: () => handlePushToNimbusAction(so.id, so.poReference), disabled: isExecuting };
+        if (so.status === 'Invoiced' && !so.awb && so.boxCount > 0) {
+            const isInstamart = so.channel.toLowerCase().includes('instamart');
+            const ewbMissing = (so.invoiceTotal || 0) >= 50000 && !so.ewb;
+
+            if (ewbMissing) {
+                return { 
+                    label: 'EWB Missing', 
+                    color: 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed', 
+                    onClick: () => addNotification('E-Way Bill required for orders >= ₹50,000.', 'warning'), 
+                    disabled: false 
+                };
+            }
+
+            return { 
+                label: isPushingNimbus === so.id ? 'Shipping...' : 'Ship Nimbus', 
+                color: 'bg-blue-600 text-white hover:bg-blue-700', 
+                onClick: () => {
+                    if (isInstamart) {
+                        setShippingConfirm({ isOpen: true, so });
+                    } else {
+                        handlePushToNimbusAction(so.id, so.poReference);
+                    }
+                }, 
+                disabled: isExecuting 
+            };
+        }
         if (so.status === 'Label Generated' || so.awb) return { label: 'Track Order', color: 'bg-partners-green text-white hover:bg-green-700', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
         return { label: 'Details', color: 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
     };
@@ -687,6 +822,22 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         <div className="bg-white p-6 rounded-xl shadow-sm">
             {blinkitModal.isOpen && blinkitModal.so && <BlinkitAppointmentModal so={blinkitModal.so} onClose={() => setBlinkitModal({ isOpen: false, so: null })} />}
             {instamartPrintPackModal.isOpen && instamartPrintPackModal.so && <InstamartPrintManager so={instamartPrintPackModal.so} onClose={() => setInstamartPrintPackModal({ isOpen: false, so: null })} />}
+            {shippingConfirm.isOpen && shippingConfirm.so && (
+                <ShippingConfirmationModal 
+                    so={shippingConfirm.so} 
+                    onClose={() => setShippingConfirm({ isOpen: false, so: null })} 
+                    onConfirm={() => {
+                        const so = shippingConfirm.so!;
+                        setShippingConfirm({ isOpen: false, so: null });
+                        handlePushToNimbusAction(so.id, so.poReference);
+                    }}
+                    onPrint={() => {
+                        const so = shippingConfirm.so!;
+                        setShippingConfirm({ isOpen: false, so: null });
+                        setInstamartPrintPackModal({ isOpen: true, so });
+                    }}
+                />
+            )}
             
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
                 <div className="flex flex-wrap items-center gap-2">
@@ -726,6 +877,10 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 const totalAmountIncTax = so.amount * 1.05;
                                 const action = getPrimaryAction(so);
                                 const isRefreshing = isRefreshingSo === so.poReference;
+                                
+                                // Error proofing: Check if it's an Instamart order with box data
+                                const isInstamart = so.channel.toLowerCase().includes('instamart');
+                                const showPrintActionInRow = isInstamart && so.boxCount > 0 && (so.status === 'Invoiced' || so.status === 'Label Generated' || !!so.awb);
 
                                 return (
                                     <Fragment key={so.id}>
@@ -739,6 +894,15 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                             <td className="px-6 py-4 whitespace-nowrap text-gray-400">{so.orderDate}</td>
                                             <td className="px-6 py-4 text-center sticky right-0 z-10 bg-inherit border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)]" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex items-center justify-center gap-2">
+                                                    {showPrintActionInRow && (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); setInstamartPrintPackModal({ isOpen: true, so }); }}
+                                                            className="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap bg-partners-green text-white hover:bg-green-700 flex items-center gap-1.5"
+                                                            title="Print Instamart Box Labels"
+                                                        >
+                                                            <PrinterIcon className="h-3.5 w-3.5" /> Print Labels
+                                                        </button>
+                                                    )}
                                                     <button onClick={(e) => { e.stopPropagation(); action.onClick?.(); }} disabled={action.disabled} className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap ${action.color} ${action.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>{action.label}</button>
                                                     <button className="text-gray-400 hover:text-gray-600 p-1"><DotsVerticalIcon className="h-4 w-4" /></button>
                                                 </div>
@@ -807,7 +971,27 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                             </button>
                                                                         </div>
                                                                     )}
-                                                                    {(so.invoiceNumber && !so.awb && so.boxCount > 0) && <button onClick={() => handlePushToNimbusAction(so.id, so.poReference)} disabled={!!isPushingNimbus} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95">{isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}{isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post'}</button>}
+                                                                    {(so.invoiceNumber && !so.awb && so.boxCount > 0) && (
+                                                                        <div className="flex flex-col items-center gap-1">
+                                                                            <button 
+                                                                                onClick={() => {
+                                                                                    if (so.channel.toLowerCase().includes('instamart')) {
+                                                                                        setShippingConfirm({ isOpen: true, so });
+                                                                                    } else {
+                                                                                        handlePushToNimbusAction(so.id, so.poReference);
+                                                                                    }
+                                                                                }} 
+                                                                                disabled={!!isPushingNimbus || ((so.invoiceTotal || 0) >= 50000 && !so.ewb)} 
+                                                                                className={`flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95 disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed`}
+                                                                            >
+                                                                                {isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}
+                                                                                {isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post'}
+                                                                            </button>
+                                                                            {((so.invoiceTotal || 0) >= 50000 && !so.ewb) && (
+                                                                                <p className="text-[10px] text-red-600 font-black animate-pulse uppercase tracking-tighter">EWB Missing</p>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -824,16 +1008,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                         <div>
                                                             <div className="flex justify-between items-center mb-4">
                                                                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><DotsVerticalIcon className="h-4 w-4 text-partners-green rotate-90" /> SKU Breakdown</h4>
-                                                                {so.channel.toLowerCase().includes('instamart') && so.boxCount > 0 && (
-                                                                    <div className="flex gap-2">
-                                                                        <button 
-                                                                            onClick={(e) => { e.stopPropagation(); setInstamartPrintPackModal({ isOpen: true, so }); }}
-                                                                            className="flex items-center gap-2 px-4 py-1.5 bg-white border border-partners-green text-partners-green text-[10px] font-bold rounded-lg hover:bg-partners-light-green transition-all"
-                                                                        >
-                                                                            <PrinterIcon className="h-3.5 w-3.5" /> Print Full Packset (PDF)
-                                                                        </button>
-                                                                    </div>
-                                                                )}
                                                             </div>
                                                             <div className="overflow-x-auto border rounded-xl"><table className="w-full text-[11px] text-left"><thead className="bg-gray-50 text-gray-500 uppercase"><tr><th className="py-2.5 px-4">Item Name / SKU</th><th className="py-2.5 text-right w-24">EE Item Qty</th><th className="py-2.5 text-right w-24 text-red-600">Cancelled</th><th className="py-2.5 text-right w-24 text-green-600">Shipped</th><th className="py-2.5 text-right w-24 text-orange-600">Returned</th><th className="py-2.5 px-4 text-center w-28">Item status</th></tr></thead><tbody className="divide-y divide-gray-100">{so.items.map((item, idx) => (<tr key={idx} className="hover:bg-gray-50"><td className="py-3 px-4"><p className="font-bold text-gray-800">{item.itemName}</p><p className="text-[10px] text-gray-400 font-mono">{item.masterSku || item.articleCode}</p></td><td className="py-3 text-right font-bold text-gray-900">{item.itemQuantity || 0}</td><td className="py-3 text-right text-red-600 font-bold">{item.cancelledQuantity || 0}</td><td className="py-3 text-right text-green-600 font-bold">{item.shippedQuantity || 0}</td><td className="py-3 text-right text-orange-600 font-bold">{item.returnedQuantity || 0}</td><td className="py-3 px-4 text-center"><span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase inline-block w-full ${item.itemStatus?.toLowerCase().includes('ship') ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{item.itemStatus || 'Processing'}</span></td></tr>))}</tbody></table></div>
                                                         </div>

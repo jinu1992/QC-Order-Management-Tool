@@ -1,3 +1,5 @@
+
+
 export type ViewType = 'Dashboard' | 'Purchase Orders' | 'File Uploader' | 'POC Verification' | 'Appointments' | 'Sales Orders' | 'GRN / POD' | 'Reports' | 'Finance' | 'Inventory' | 'Admin';
 
 export enum POStatus {
@@ -49,6 +51,7 @@ export interface POItem {
     invoiceUrl?: string;
     invoicePdfUrl?: string;
     eeBoxCount?: number;
+    ewb?: string;
     // Fulfillment specific tracking
     carrier?: string;
     awb?: string;
@@ -112,7 +115,7 @@ export interface PurchaseOrder {
     eeBatchCreatedAt?: string;
     eeInvoiceDate?: string;
     eeManifestDate?: string;
-    bookedDate?: string;
+    // Removed duplicate carrier and awb fields from lines 117-118
     trackingStatus?: string;
     edd?: string;
     latestStatus?: string;
@@ -122,6 +125,7 @@ export interface PurchaseOrder {
     rtoStatus?: string;
     rtoAwb?: string;
     eeReferenceBoxCount?: number;
+    ewb?: string;
 }
 
 export interface User {

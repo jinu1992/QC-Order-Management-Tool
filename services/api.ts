@@ -256,6 +256,7 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
         const articleCode = String(row['Item Code'] || row['Article Code'] || '').trim();
         
         const eeRefBoxCount = Number(getColumnValueCaseInsensitive(row, 'Box Data') || 0);
+        const ewb = row['EWB'] || row['E-Way Bill'] || row['Eway Bill'];
 
         const item: POItem = {
             articleCode,
@@ -286,6 +287,7 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
             invoiceUrl: row['Invoice Url'],
             invoicePdfUrl: row['Invoice PDF Url'],
             eeBoxCount: eeRefBoxCount,
+            ewb,
             carrier: row['Carrier'],
             awb: row['AWB'],
             trackingStatus: row['Tracking Status'],
@@ -333,6 +335,7 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
                 eeBatchCreatedAt: formatSheetDate(row['EE_batch_created_at']),
                 eeInvoiceDate: formatSheetDate(row['EE_invoice_date']),
                 eeManifestDate: formatSheetDate(row['EE_manifest_date']),
+                ewb,
                 carrier: row['Carrier'],
                 awb: row['AWB'],
                 trackingStatus: row['Tracking Status'],
