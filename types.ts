@@ -1,5 +1,4 @@
 
-
 export type ViewType = 'Dashboard' | 'Purchase Orders' | 'File Uploader' | 'POC Verification' | 'Appointments' | 'Sales Orders' | 'GRN / POD' | 'Reports' | 'Finance' | 'Inventory' | 'Admin';
 
 export enum POStatus {
@@ -83,7 +82,6 @@ export interface PurchaseOrder {
     dispatchDate?: string;
     boxes?: number;
     trackingUrl?: string;
-    // Fix: Single declaration for appointmentDate
     appointmentDate?: string;
     grnDate?: string;
     latestTrackingStatus?: string;
@@ -93,7 +91,6 @@ export interface PurchaseOrder {
     pocPhoneNumber?: string;
     contactVerified: boolean;
     pocEmail?: string;
-    // Fix: Single declaration for appointmentRequestDate
     appointmentRequestDate?: string;
     appointmentTime?: string;
     appointmentId?: string;
@@ -115,7 +112,6 @@ export interface PurchaseOrder {
     eeBatchCreatedAt?: string;
     eeInvoiceDate?: string;
     eeManifestDate?: string;
-    // Removed duplicate carrier and awb fields from lines 117-118
     trackingStatus?: string;
     edd?: string;
     latestStatus?: string;

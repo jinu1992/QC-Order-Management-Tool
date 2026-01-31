@@ -1,5 +1,4 @@
 
-
 import React, { useState, Fragment, useMemo, FC, useRef, useEffect } from 'react';
 import { type PurchaseOrder, type InventoryItem, POItem } from '../types';
 import { 
@@ -99,7 +98,6 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
     }, [so.id]);
 
     // Group items by Box ID, Map SKU to Item Code, and CONSOLIDATE QUANTITIES
-    // Fix: Explicitly typing the record to avoid 'unknown' type issues during iteration (Line 127)
     const groupedBoxes: Record<string, any[]> = useMemo(() => {
         const boxes: Record<string, any[]> = {};
         
@@ -114,7 +112,7 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
             const quantity = Number(row['Item Quantity'] || 0);
 
             // Consolidate logic: Check if this itemCode already exists in this specific box
-            const existingItem = boxes[boxId].find(item => item.itemCode === itemCode);
+            const existingItem = (boxes[boxId] as any[]).find(item => item.itemCode === itemCode);
             
             if (existingItem) {
                 existingItem.quantity += quantity;
@@ -131,7 +129,6 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
     }, [packingData, so.items]);
 
     const handlePrintPack = () => {
-        // Fix: Typing Object.entries to resolve 'unknown' errors on line 249
         const boxEntries = Object.entries(groupedBoxes) as [string, any[]][];
         const totalBoxes = boxEntries.length;
         if (totalBoxes === 0) {
@@ -176,125 +173,112 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
                 <body>
         `;
 
-html += `
-  <div class="min-h-screen p-6 font-mono page-break">
+        const styles = {
+          title: 'font-size: 20pt; font-weight: 900;',
+          sectionTitle: 'font-size: 16pt; font-weight: 800;',
+          label: 'font-size: 8pt; font-weight: 700; text-transform: uppercase;',
+          valueLarge: 'font-size: 18pt; font-weight: 900;',
+          valueXL: 'font-size: 24pt; font-weight: 900;',
+          valueMedium: 'font-size: 14pt; font-weight: 800;',
+          valueSmall: 'font-size: 11pt; font-weight: 700;',
+          monoCode: 'font-size: 14pt; font-weight: 900; font-family: monospace; text-transform: uppercase;',
+        };
 
-    <!-- HEADER -->
-    <div class="border-b-2 border-black pb-2 mb-4">
-      <p class="text-xl font-black uppercase">
-        MASTER PACKING SLIP
-      </p>
-    </div>
+        html += `
+        <div class="label-container page-break">
+          <div style="padding: 10pt; margin-bottom: 20pt;">
+            <h1 style="${styles.title}" class="uppercase text-black">
+              Master Packing Slip
+            </h1>
+          </div>
 
-    <!-- PO / INVOICE -->
-    <div class="space-y-4 mb-6">
-      <div>
-        <p class="text-xs font-bold uppercase">PO Number</p>
-        <p class="text-3xl font-black uppercase">${so.poReference}</p>
-      </div>
-
-      <div>
-        <p class="text-xs font-bold uppercase">Invoice No.</p>
-        <p class="text-3xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p>
-      </div>
-    </div>
-
-    <!-- TOTALS (STACKED, CONSISTENT) -->
-    <div class="border-t-2 border-black pt-4 space-y-4">
-
-      <div>
-        <p class="text-xs font-bold uppercase">Total Box Count</p>
-        <p class="text-3xl font-black">${totalBoxes}</p>
-      </div>
-
-      <div>
-        <p class="text-xs font-bold uppercase">SKU Count</p>
-        <p class="text-3xl font-black">${so.items.length}</p>
-      </div>
-
-      <div>
-        <p class="text-xs font-bold uppercase">Total Quantity</p>
-        <p class="text-3xl font-black">${so.qty}</p>
-      </div>
-
-    </div>
-  </div>
-`;
-
-
-  /* ================= BOX LABELS ================= */
-  boxEntries.forEach(([boxId, items], idx) => {
-    html += `
-    <div class="min-h-screen p-6 font-mono ${idx < totalBoxes - 1 ? 'page-break' : ''}">
-
-      <!-- HEADER -->
-      <div class="flex justify-between items-end gap-4 border-b-2 border-black pb-2 mb-4">
-        <p class="text-xl font-black uppercase">
-          Instamart Box Label
-        </p>
-        <p class="text-xl font-black text-right">
-          BOX ${idx + 1}/${totalBoxes}
-        </p>
-      </div>
-
-      <!-- PO / INVOICE -->
-      <div class="border-b-2 border-black pb-3 mb-4 space-y-3">
-        <div>
-          <p class="text-xs font-bold uppercase">PO Number</p>
-          <p class="text-xl font-black uppercase">${so.poReference}</p>
-        </div>
-
-        <div>
-          <p class="text-xs font-bold uppercase">Invoice No.</p>
-          <p class="text-xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p>
-        </div>
-      </div>
-
-      <!-- SKU DETAILS -->
-      <div class="space-y-4 mb-4">
-        ${items.map(item => `
-          <div class="space-y-2">
+          <div class="space-y-6">
             <div>
-              <p class="text-xs font-bold uppercase">SKU Name</p>
-              <p class="text-xl font-black uppercase">${item.productName}</p>
+              <p style="${styles.label}">PO Number</p>
+              <p style="${styles.valueLarge}">${so.poReference}</p>
             </div>
 
             <div>
-              <p class="text-xs font-bold uppercase">SKU Code</p>
-              <p class="text-xl font-black uppercase">${item.itemCode}</p>
-            </div>
-
-            <div>
-              <p class="text-xs font-bold uppercase">EAN Barcode</p>
-              <p class="text-xl font-black uppercase">${item.ean}</p>
-            </div>
-
-            <div>
-              <p class="text-xs font-bold uppercase">Quantity</p>
-              <p class="text-xl font-black">${item.quantity}</p>
+              <p style="${styles.label}">Invoice No.</p>
+              <p style="${styles.valueLarge}">${so.invoiceNumber || 'N/A'}</p>
             </div>
           </div>
-        `).join('')}
-      </div>
 
-      <!-- FOOTER -->
-      <div class="grid grid-cols-2 gap-4 border-t-2 border-black pt-4">
-        <div>
-          <p class="text-xs font-bold uppercase">Box ID</p>
-          <p class="text-lg font-bold">${boxId}</p>
+          <div class="grid grid-cols-1 gap-4 pt-6 border-t-2 border-black">
+            <div class="flex justify-between items-end">
+              <p style="${styles.label}">Total Box Count</p>
+              <p style="${styles.valueXL}">${totalBoxes}</p>
+            </div>
+
+            <div class="flex justify-between items-end">
+              <p style="${styles.label}">SKU Count</p>
+              <p style="${styles.valueXL}">${so.items.length}</p>
+            </div>
+
+            <div class="flex justify-between items-end">
+              <p style="${styles.label}">Total Quantity</p>
+              <p style="${styles.valueXL}">${so.qty}</p>
+            </div>
+          </div>
         </div>
+        `;
 
-        <div class="text-right">
-          <p class="text-xs font-bold uppercase">Packing Date</p>
-          <p class="text-lg font-bold">${packingDate}</p>
-        </div>
-      </div>
+        boxEntries.forEach(([boxId, items], idx) => {
+          html += `
+          <div class="label-container ${idx < totalBoxes - 1 ? 'page-break' : ''}">
+            <h1 style="${styles.sectionTitle}" class="uppercase border-b-2 border-black pb-2 mb-6">
+              Instamart Box Label
+            </h1>
 
-    </div>
-    `;
-  });
+            <div class="space-y-4 mb-6">
+              <div>
+                <p style="${styles.label}">PO Number</p>
+                <p style="${styles.valueLarge}">${so.poReference}</p>
+              </div>
 
+              <div>
+                <p style="${styles.label}">Invoice No.</p>
+                <p style="${styles.valueLarge}">${so.invoiceNumber || 'N/A'}</p>
+              </div>
+            </div>
 
+            <div class="mb-4">
+
+              <table class="w-full item-table">
+                <tbody>
+                  ${(items as any[]).map(item => `
+                    <tr>
+                      <td style="padding: 4pt 0;">
+                        <p style="${styles.monoCode}">SKU NAME: ${item.productName}</p>
+                        <p style="${styles.monoCode}" class="uppercase">SKU CODE: ${item.itemCode}</p>
+                        <p style="${styles.monoCode}">EAN BARCODE: ${item.ean}</p>
+                        <p style="${styles.monoCode}">QUANTITY: ${item.quantity}</p>            
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 pt-4 border-t-2 border-black">
+              <div>
+                <p style="${styles.label}">Box Count</p>
+                <p style="${styles.valueXL}">
+                  ${idx + 1} of ${totalBoxes}
+                </p>
+                <p style="font-size: 7pt; font-weight: 700; color: #9CA3AF;">
+                  ID: ${boxId}
+                </p>
+              </div>
+
+              <div class="text-right">
+                <p style="${styles.label}">Packing Date</p>
+                <p style="${styles.valueMedium}">${packingDate}</p>
+              </div>
+            </div>
+          </div>
+          `;
+        });
 
         html += `
                     <script>
@@ -353,7 +337,6 @@ html += `
                                 </div>
                             </div>
 
-                            {/* Fix: Explicitly casting Object.entries to any[] array to fix 'unknown' errors on line 350 and 352 */}
                             {(Object.entries(groupedBoxes) as [string, any[]][]).map(([boxId, items], i) => (
                                 <div key={boxId} className="bg-white p-6 border rounded-2xl shadow-sm relative group overflow-hidden flex flex-col border-l-4 border-l-partners-green">
                                     <div className="absolute top-0 right-0 p-2 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">BOX {i+1} OF {Object.keys(groupedBoxes).length}</div>
@@ -364,9 +347,9 @@ html += `
                                     <div className="space-y-3 flex-1">
                                         <div className="flex justify-between items-center border-b pb-1">
                                             <p className="text-[10px] font-bold text-gray-400 uppercase">Box Contents</p>
-                                            <span className="text-[10px] font-bold text-gray-400">{items.length} SKUs</span>
+                                            <span className="text-[10px] font-bold text-gray-400">{(items as any[]).length} SKUs</span>
                                         </div>
-                                        {items.map((item, j) => (
+                                        {(items as any[]).map((item, j) => (
                                             <div key={j} className="flex justify-between items-start gap-2 border-b border-gray-50 pb-2 last:border-0">
                                                 <div className="flex-1">
                                                     <p className="text-xs font-bold text-gray-900 line-clamp-1">{item.productName}</p>
@@ -478,7 +461,7 @@ const BlinkitAppointmentModal: FC<{ so: GroupedSalesOrder, onClose: () => void }
                         <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-yellow-100"><span className="font-black italic text-xl">b</span></div>
                         <div><h3 className="text-lg font-bold text-gray-800">Blinkit Appointment Helper</h3><p className="text-xs text-gray-500">Portal: <span className="font-bold text-partners-green">partnersbiz.com</span></p></div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><XCircleIcon className="h-8 w-8 text-gray-400"/></button>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><XCircleIcon className="h-6 w-6 text-gray-400"/></button>
                 </div>
                 <div className="p-6 space-y-6">
                     <div className="bg-partners-light-green border-2 border-dashed border-partners-green/30 p-4 rounded-2xl flex gap-4 items-start">
@@ -720,7 +703,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 }));
 
                 // Follow up with targeted refresh
-                await refreshSinglePOState(poRef);
+                await refreshSingleSOState(poRef);
             } else {
                 addNotification('Error: ' + res.message, 'error');
             }
@@ -797,7 +780,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     label: 'EWB Missing', 
                     color: 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed', 
                     onClick: () => addNotification('E-Way Bill required for orders >= ₹50,000.', 'warning'), 
-                    disabled: false 
+                    disabled: true 
                 };
             }
 
@@ -982,7 +965,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                                     }
                                                                                 }} 
                                                                                 disabled={!!isPushingNimbus || ((so.invoiceTotal || 0) >= 50000 && !so.ewb)} 
-                                                                                className={`flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95 disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed`}
+                                                                                className={`flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md transition-all active:scale-95 disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed`}
                                                                             >
                                                                                 {isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}
                                                                                 {isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post'}
