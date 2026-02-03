@@ -298,8 +298,12 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
             eeBoxCount: eeRefBoxCount,
             ewb,
             fbaShipmentId: row['FBA Shipment IDs'],
+            inboundPlanId: row['Inbound Plan ID'],
+            gst: String(row['GST'] || ''),
             carrier: row['Carrier'],
             awb: row['AWB'],
+            bookedDate: formatSheetDate(row['Booked Date']),
+            trackingUrl: row['Tracking URL'],
             trackingStatus: row['Tracking Status'],
             edd: formatSheetDate(row['EDD']),
             latestStatus: row['Latest Status'],
@@ -307,7 +311,9 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
             currentLocation: row['Current Location'],
             deliveredDate: formatSheetDate(row['Delivered Date']),
             rtoStatus: row['RTO Status'],
-            rtoAwb: row['RTO AWB']
+            rtoAwb: row['RTO AWB'],
+            freightCharged: Number(row['Freight Charged'] || 0),
+            zohoItemId: row['Zoho Item ID']
         };
 
         if (poMap.has(poNumber)) {
@@ -347,8 +353,12 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
                 eeManifestDate: formatSheetDate(row['EE_manifest_date']),
                 ewb,
                 fbaShipmentId: row['FBA Shipment IDs'],
+                inboundPlanId: row['Inbound Plan ID'],
+                gst: String(row['GST'] || ''),
                 carrier: row['Carrier'],
                 awb: row['AWB'],
+                bookedDate: formatSheetDate(row['Booked Date']),
+                trackingUrl: row['Tracking URL'],
                 trackingStatus: row['Tracking Status'],
                 edd: formatSheetDate(row['EDD']),
                 latestStatus: row['Latest Status'],
@@ -356,7 +366,10 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
                 currentLocation: row['Current Location'],
                 deliveredDate: formatSheetDate(row['Delivered Date']),
                 rtoStatus: row['RTO Status'],
-                rtoAwb: row['RTO AWB']
+                rtoAwb: row['RTO AWB'],
+                freightCharged: Number(row['Freight Charged'] || 0),
+                totalPoValue: Number(row['Total PO Value'] || 0),
+                totalCostPrice: Number(row['Total cost price'] || 0)
             });
         }
     });
@@ -430,19 +443,22 @@ export const cancelPurchaseOrder = async (poNumber: string) => {
 };
 
 export const pushToEasyEcom = async (po: PurchaseOrder, selectedArticleCodes: string[]) => {
-    const itemsToSend = (po.items || []).filter(item => selectedArticleCodes.includes(item.articleCode))
+    const itemsToSend = (po.items || [])
+        .filter(item => selectedArticleCodes.includes(item.articleCode))
         .map(item => ({
             ...item,
             unitCost: Number(((item.unitCost || 0) * 1.05).toFixed(2))
         }));
+    
     const isPartial = (po.items || []).length > itemsToSend.length;
+    
+    // Spread all PO details to ensure all columns are available in the payload,
+    // excluding the raw items and the local ID which are handled separately.
+    const { items: _, id: __, ...poMetadata } = po;
+
     const response = await postToScript({
         action: 'pushToEasyEcom',
-        poNumber: po.poNumber,
-        channel: po.channel,
-        storeCode: po.storeCode,
-        eeCustomerId: po.eeCustomerId,
-        orderDate: po.orderDate,
+        ...poMetadata,
         items: itemsToSend,
         isPartial
     });

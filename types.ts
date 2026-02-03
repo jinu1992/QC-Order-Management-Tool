@@ -52,9 +52,13 @@ export interface POItem {
     eeBoxCount?: number;
     ewb?: string;
     fbaShipmentId?: string;
+    inboundPlanId?: string;
+    gst?: string;
     // Fulfillment specific tracking
     carrier?: string;
     awb?: string;
+    bookedDate?: string;
+    trackingUrl?: string;
     trackingStatus?: string;
     edd?: string;
     latestStatus?: string;
@@ -63,6 +67,8 @@ export interface POItem {
     deliveredDate?: string;
     rtoStatus?: string;
     rtoAwb?: string;
+    freightCharged?: number;
+    zohoItemId?: string;
 }
 
 export interface PurchaseOrder {
@@ -82,6 +88,7 @@ export interface PurchaseOrder {
     awb?: string;
     dispatchDate?: string;
     boxes?: number;
+    bookedDate?: string;
     trackingUrl?: string;
     appointmentDate?: string;
     grnDate?: string;
@@ -124,6 +131,11 @@ export interface PurchaseOrder {
     eeReferenceBoxCount?: number;
     ewb?: string;
     fbaShipmentId?: string;
+    inboundPlanId?: string;
+    gst?: string;
+    freightCharged?: number;
+    totalPoValue?: number;
+    totalCostPrice?: number;
 }
 
 export interface User {
