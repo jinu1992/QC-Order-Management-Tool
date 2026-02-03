@@ -140,11 +140,54 @@ function doPost(e) {
     if (action === 'updatePOStatus') return updatePOStatus(data.poNumber, data.status);
     if (action === 'syncInventory') return handleSyncInventory();
     if (action === 'cancelLineItem') return handleCancelLineItem(data.poNumber, data.articleCode);
+    if (action === 'updateFBAShipmentId') return handleUpdateFBAShipmentId(data.poNumber, data.fbaShipmentId);
     
     return responseJSON({status: 'error', message: 'Invalid action: ' + action});
   } catch (error) {
     return responseJSON({status: 'error', message: "doPost Error: " + error.toString()});
   }
+}
+
+/**
+ * Updates the FBA Shipment IDs column in the PO Database
+ */
+function handleUpdateFBAShipmentId(poNumber, fbaShipmentId) {
+    try {
+        const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+        const sheet = ss.getSheetByName(SHEET_PO_DB);
+        if (!sheet) throw new Error("PO_Database sheet not found");
+
+        const data = sheet.getDataRange().getValues();
+        const headers = data[0].map(h => String(h).trim());
+        
+        let poNumIdx = headers.indexOf("PO Number");
+        if (poNumIdx === -1) poNumIdx = headers.indexOf("PO_Number");
+        
+        const fbaColIdx = headers.indexOf("FBA Shipment IDs");
+
+        if (poNumIdx === -1 || fbaColIdx === -1) {
+            throw new Error(`Required columns missing (PO Number or FBA Shipment IDs). Columns found: ${headers.join(', ')}`);
+        }
+
+        let updateCount = 0;
+        const targetPo = String(poNumber).trim();
+
+        // poNumber might be a comma separated list from the UI (grouped order)
+        const poList = targetPo.split(',').map(p => p.trim());
+
+        for (let i = 1; i < data.length; i++) {
+            const rowPo = String(data[i][poNumIdx]).trim();
+            if (poList.includes(rowPo)) {
+                sheet.getRange(i + 1, fbaColIdx + 1).setValue(fbaShipmentId);
+                updateCount++;
+            }
+        }
+
+        SpreadsheetApp.flush();
+        return responseJSON({ status: 'success', message: `Updated FBA Shipment ID for ${updateCount} row(s).` });
+    } catch (e) {
+        return responseJSON({ status: 'error', message: e.toString() });
+    }
 }
 
 /**

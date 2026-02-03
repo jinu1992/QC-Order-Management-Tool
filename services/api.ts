@@ -70,6 +70,15 @@ export const pushToNimbusPost = async (eeReferenceCode: string): Promise<{status
     return await response.json();
 };
 
+export const updateFBAShipmentId = async (poNumber: string, fbaShipmentId: string): Promise<{status: string, message?: string}> => {
+    const response = await postToScript({ 
+        action: 'updateFBAShipmentId', 
+        poNumber,
+        fbaShipmentId
+    });
+    return await response.json();
+};
+
 export const fetchUploadMetadata = async (): Promise<UploadMetadata[]> => {
     try {
         const response = await fetch(`${API_URL}?action=getUploadMetadata`, { method: 'GET', redirect: 'follow', mode: 'cors' });
@@ -288,6 +297,7 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
             invoicePdfUrl: row['Invoice PDF Url'],
             eeBoxCount: eeRefBoxCount,
             ewb,
+            fbaShipmentId: row['FBA Shipment IDs'],
             carrier: row['Carrier'],
             awb: row['AWB'],
             trackingStatus: row['Tracking Status'],
@@ -336,6 +346,7 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
                 eeInvoiceDate: formatSheetDate(row['EE_invoice_date']),
                 eeManifestDate: formatSheetDate(row['EE_manifest_date']),
                 ewb,
+                fbaShipmentId: row['FBA Shipment IDs'],
                 carrier: row['Carrier'],
                 awb: row['AWB'],
                 trackingStatus: row['Tracking Status'],

@@ -51,6 +51,7 @@ export interface POItem {
     invoicePdfUrl?: string;
     eeBoxCount?: number;
     ewb?: string;
+    fbaShipmentId?: string;
     // Fulfillment specific tracking
     carrier?: string;
     awb?: string;
@@ -122,6 +123,7 @@ export interface PurchaseOrder {
     rtoAwb?: string;
     eeReferenceBoxCount?: number;
     ewb?: string;
+    fbaShipmentId?: string;
 }
 
 export interface User {

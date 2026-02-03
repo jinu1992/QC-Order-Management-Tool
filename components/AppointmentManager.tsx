@@ -17,7 +17,8 @@ import {
     SearchIcon,
     FilterIcon,
     ClockIcon,
-    PaperclipIcon
+    PaperclipIcon,
+    CubeIcon
 } from './icons/Icons';
 import { fetchStorePocMappings, sendAppointmentEmail, fetchChannelConfigs } from '../services/api';
 
@@ -163,7 +164,14 @@ const BulkEmailModal: FC<BulkAppointmentModalProps> = ({ channel, pos, channelCo
     );
 };
 
-const BlinkitAppointmentModal: FC<{ po: PurchaseOrder, onClose: () => void }> = ({ po, onClose }) => {
+const PortalHelperModal: FC<{ po: PurchaseOrder, onClose: () => void }> = ({ po, onClose }) => {
+    const isZepto = po.channel.toLowerCase().includes('zepto');
+    const portalName = isZepto ? 'Zepto Brands' : 'Blinkit Partners';
+    const portalUrl = isZepto ? 'https://brands.zepto.co.in/' : 'https://partnersbiz.com';
+    const brandColor = isZepto ? 'bg-purple-600' : 'bg-yellow-400';
+    const logoText = isZepto ? 'z' : 'b';
+    const shadowColor = isZepto ? 'shadow-purple-100' : 'shadow-yellow-100';
+
     // Search for invoice info in items or use defaults
     const firstPushedItem = (po.items || []).find(i => !!i.invoiceNumber);
     const invoiceNumber = firstPushedItem?.invoiceNumber || po.invoiceId || 'N/A';
@@ -175,12 +183,12 @@ const BlinkitAppointmentModal: FC<{ po: PurchaseOrder, onClose: () => void }> = 
             <div className="bg-partners-gray-bg rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-white">
                 <div className="p-6 bg-white border-b border-gray-100 flex justify-between items-center">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-yellow-100">
-                            <span className="font-black italic text-xl">b</span>
+                        <div className={`w-10 h-10 ${brandColor} rounded-xl flex items-center justify-center text-white shadow-lg ${shadowColor}`}>
+                            <span className="font-black italic text-xl">{logoText}</span>
                         </div>
                         <div>
-                            <h3 className="text-lg font-bold text-gray-800">Blinkit Appointment Helper</h3>
-                            <p className="text-xs text-gray-500">Portal: <span className="font-bold text-partners-green">partnersbiz.com</span></p>
+                            <h3 className="text-lg font-bold text-gray-800">{portalName} Helper</h3>
+                            <p className="text-xs text-gray-500">Portal: <span className="font-bold text-partners-green">{portalUrl.replace('https://', '')}</span></p>
                         </div>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><XCircleIcon className="h-6 w-6 text-gray-400"/></button>
@@ -199,6 +207,7 @@ const BlinkitAppointmentModal: FC<{ po: PurchaseOrder, onClose: () => void }> = 
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <CopyField label="PO Number" value={po.poNumber} icon={<ClipboardListIcon className="h-3 w-3"/>} />
+                        <CopyField label="Fulfilled Quantity" value={String(po.qty)} icon={<CubeIcon className="h-3 w-3"/>} />
                         <CopyField label="Courier Name" value={po.carrier || 'Standard'} icon={<TruckIcon className="h-3 w-3"/>} />
                         <CopyField label="AWB Number" value={po.awb || 'N/A'} icon={<GlobeIcon className="h-3 w-3"/>} />
                         <CopyField label="Invoice Number" value={invoiceNumber} icon={<InvoiceIcon className="h-3 w-3"/>} />
@@ -209,10 +218,10 @@ const BlinkitAppointmentModal: FC<{ po: PurchaseOrder, onClose: () => void }> = 
                     </div>
                     <div className="flex flex-col items-center pt-2">
                         <button 
-                            onClick={() => window.open('https://partnersbiz.com', '_blank')} 
-                            className="w-full py-4 bg-partners-green text-white font-bold rounded-2xl shadow-xl shadow-green-100 hover:bg-green-700 transition-all flex items-center justify-center gap-3 active:scale-95"
+                            onClick={() => window.open(portalUrl, '_blank')} 
+                            className={`w-full py-4 ${brandColor} text-white font-bold rounded-2xl shadow-xl ${shadowColor} hover:brightness-90 transition-all flex items-center justify-center gap-3 active:scale-95`}
                         >
-                            <ExternalLinkIcon className="h-5 w-5" /> Open Blinkit Partners Portal
+                            <ExternalLinkIcon className="h-5 w-5" /> Open {portalName} Portal
                         </button>
                     </div>
                 </div>
@@ -244,7 +253,7 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
     const [channelConfigs, setChannelConfigs] = useState<ChannelConfig[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [bulkModal, setBulkModal] = useState<{ isOpen: boolean, channel: string, pos: PurchaseOrder[], channelConfig?: ChannelConfig }>({ isOpen: false, channel: '', pos: [] });
-    const [blinkitModal, setBlinkitModal] = useState<{ isOpen: boolean, po?: PurchaseOrder }>({ isOpen: false });
+    const [portalHelper, setPortalHelper] = useState<{ isOpen: boolean, po?: PurchaseOrder }>({ isOpen: false });
     const [activeTab, setActiveTab] = useState<'toBeScheduled' | 'open' | 'invoicePending' | 'serviced' | 'cancelled'>('toBeScheduled');
     const [selectedPoIds, setSelectedPoIds] = useState<string[]>([]);
 
@@ -258,6 +267,15 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
         loadConfigs();
     }, []);
 
+    // Filter out Amazon_FBA orders from the entire section
+    const filteredPOs = useMemo(() => {
+        return purchaseOrders.filter(po => {
+            const channel = (po.channel || '').toLowerCase();
+            const store = (po.storeCode || '').toLowerCase();
+            return !channel.includes('amazon_fba') && !store.includes('amazon_fba');
+        });
+    }, [purchaseOrders]);
+
     const getIsAppointmentTaken = (po: PurchaseOrder) => {
         // An appointment is "taken" if it has a confirmed date OR an existing request date.
         return !!po.appointmentDate || !!po.appointmentRequestDate;
@@ -265,7 +283,7 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
 
     const relevantOrders = useMemo(() => {
         // Rule: Only show orders for which an Appointment has NOT been booked yet.
-        return purchaseOrders.filter(po => 
+        return filteredPOs.filter(po => 
             !getIsAppointmentTaken(po) && 
             (
                 po.status === POStatus.AppointmentPending || 
@@ -275,42 +293,44 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
                 po.status === POStatus.NewPO
             )
         ).sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
-    }, [purchaseOrders]);
+    }, [filteredPOs]);
 
     const statistics = useMemo(() => {
         const toBeScheduled = relevantOrders.length;
-        const openAppointments = purchaseOrders.filter(po => getIsAppointmentTaken(po) && po.status !== POStatus.Delivered && po.status !== POStatus.Closed && po.status !== POStatus.Cancelled).length;
-        const invoicePending = purchaseOrders.filter(po => !po.poPdfUrl && po.status !== POStatus.Cancelled).length;
-        const fulfilled = purchaseOrders.filter(po => po.status === POStatus.Delivered || po.status === POStatus.Closed).length;
-        const cancelled = purchaseOrders.filter(po => po.status === POStatus.Cancelled).length;
+        const openAppointments = filteredPOs.filter(po => getIsAppointmentTaken(po) && po.status !== POStatus.Delivered && po.status !== POStatus.Closed && po.status !== POStatus.Cancelled).length;
+        const invoicePending = filteredPOs.filter(po => !po.poPdfUrl && po.status !== POStatus.Cancelled).length;
+        const fulfilled = filteredPOs.filter(po => po.status === POStatus.Delivered || po.status === POStatus.Closed).length;
+        const cancelled = filteredPOs.filter(po => po.status === POStatus.Cancelled).length;
         return { toBeScheduled, openAppointments, invoicePending, fulfilled, cancelled, totalServiced: fulfilled };
-    }, [relevantOrders, purchaseOrders]);
+    }, [relevantOrders, filteredPOs]);
 
     const tableOrders = useMemo(() => {
         if (activeTab === 'toBeScheduled') return relevantOrders;
         
-        let filtered = purchaseOrders;
+        let filtered = filteredPOs;
         switch (activeTab) {
             case 'open':
-                filtered = purchaseOrders.filter(po => getIsAppointmentTaken(po) && po.status !== POStatus.Delivered && po.status !== POStatus.Closed && po.status !== POStatus.Cancelled);
+                filtered = filteredPOs.filter(po => getIsAppointmentTaken(po) && po.status !== POStatus.Delivered && po.status !== POStatus.Closed && po.status !== POStatus.Cancelled);
                 break;
             case 'invoicePending':
-                filtered = purchaseOrders.filter(po => !po.poPdfUrl && po.status !== POStatus.Cancelled);
+                filtered = filteredPOs.filter(po => !po.poPdfUrl && po.status !== POStatus.Cancelled);
                 break;
             case 'serviced':
-                filtered = purchaseOrders.filter(po => po.status === POStatus.Delivered || po.status === POStatus.Closed);
+                filtered = filteredPOs.filter(po => po.status === POStatus.Delivered || po.status === POStatus.Closed);
                 break;
             case 'cancelled':
-                filtered = purchaseOrders.filter(po => po.status === POStatus.Cancelled);
+                filtered = filteredPOs.filter(po => po.status === POStatus.Cancelled);
                 break;
         }
         return filtered.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
-    }, [purchaseOrders, relevantOrders, activeTab]);
+    }, [filteredPOs, relevantOrders, activeTab]);
 
     const handleSchedule = (po: PurchaseOrder) => {
         const isBlinkit = po.channel.toLowerCase().includes('blinkit');
-        if (isBlinkit) {
-            setBlinkitModal({ isOpen: true, po });
+        const isZepto = po.channel.toLowerCase().includes('zepto');
+        
+        if (isBlinkit || isZepto) {
+            setPortalHelper({ isOpen: true, po });
         } else {
             const config = channelConfigs.find(c => c.channelName === po.channel);
             setBulkModal({ isOpen: true, channel: po.channel, pos: [po], channelConfig: config });
@@ -329,8 +349,8 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
             return;
         }
 
-        if (firstChannel.toLowerCase().includes('blinkit')) {
-            alert("Blinkit appointments must be taken individually through the partners portal helper.");
+        if (firstChannel.toLowerCase().includes('blinkit') || firstChannel.toLowerCase().includes('zepto')) {
+            alert(`${firstChannel} appointments must be taken individually through the portal helper.`);
             return;
         }
 
@@ -366,10 +386,10 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
                 />
             )}
 
-            {blinkitModal.isOpen && blinkitModal.po && (
-                <BlinkitAppointmentModal 
-                    po={blinkitModal.po}
-                    onClose={() => setBlinkitModal({ isOpen: false })}
+            {portalHelper.isOpen && portalHelper.po && (
+                <PortalHelperModal 
+                    po={portalHelper.po}
+                    onClose={() => setPortalHelper({ isOpen: false })}
                 />
             )}
 
@@ -439,7 +459,9 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
                                     tableOrders.map(po => {
                                         const isTaken = getIsAppointmentTaken(po);
                                         const isSelected = selectedPoIds.includes(po.id);
+                                        const isPortalHelperChannel = po.channel.toLowerCase().includes('blinkit') || po.channel.toLowerCase().includes('zepto');
                                         const isBlinkit = po.channel.toLowerCase().includes('blinkit');
+                                        const isZepto = po.channel.toLowerCase().includes('zepto');
                                         
                                         return (
                                             <tr key={po.id} className={`hover:bg-gray-50/50 transition-colors ${isSelected ? 'bg-partners-light-green/20' : ''}`}>
@@ -447,11 +469,11 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
                                                     <td className="px-4 py-4 text-center">
                                                         <input 
                                                             type="checkbox" 
-                                                            className={`rounded border-gray-300 text-partners-green focus:ring-partners-green ${isBlinkit ? 'opacity-30' : ''}`}
+                                                            className={`rounded border-gray-300 text-partners-green focus:ring-partners-green ${isPortalHelperChannel ? 'opacity-30' : ''}`}
                                                             checked={isSelected}
-                                                            onChange={() => !isBlinkit && handleToggleSelect(po.id)}
-                                                            disabled={isBlinkit}
-                                                            title={isBlinkit ? "Blinkit orders must be scheduled individually" : ""}
+                                                            onChange={() => !isPortalHelperChannel && handleToggleSelect(po.id)}
+                                                            disabled={isPortalHelperChannel}
+                                                            title={isPortalHelperChannel ? `${po.channel} orders must be scheduled individually` : ""}
                                                         />
                                                     </td>
                                                 )}
@@ -479,9 +501,13 @@ const AppointmentManager: React.FC<{ purchaseOrders: PurchaseOrder[], setPurchas
                                                     {!isTaken ? (
                                                         <button 
                                                             onClick={() => handleSchedule(po)}
-                                                            className={`px-6 py-1.5 border border-partners-green text-partners-green font-bold text-[11px] rounded hover:bg-partners-green hover:text-white transition-all active:scale-95 ${isBlinkit ? 'bg-yellow-50 border-yellow-400 text-yellow-700 hover:bg-yellow-400 hover:text-white' : ''}`}
+                                                            className={`px-6 py-1.5 border font-bold text-[11px] rounded transition-all active:scale-95 ${
+                                                                isBlinkit ? 'bg-yellow-50 border-yellow-400 text-yellow-700 hover:bg-yellow-400 hover:text-white' : 
+                                                                isZepto ? 'bg-purple-50 border-purple-400 text-purple-700 hover:bg-purple-600 hover:text-white' :
+                                                                'border-partners-green text-partners-green hover:bg-partners-green hover:text-white'
+                                                            }`}
                                                         >
-                                                            {isBlinkit ? 'Open Helper' : 'Schedule'}
+                                                            {isPortalHelperChannel ? 'Open Helper' : 'Schedule'}
                                                         </button>
                                                     ) : (
                                                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-center gap-1">

@@ -28,7 +28,7 @@ import {
     PrinterIcon,
     AlertIcon
 } from './icons/Icons';
-import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO, fetchPackingData } from '../services/api';
+import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO, fetchPackingData, updateFBAShipmentId } from '../services/api';
 
 interface SalesOrderTableProps {
     activeFilter: string;
@@ -80,7 +80,66 @@ interface GroupedSalesOrder {
     appointmentDate?: string;
     appointmentRequestDate?: string;
     ewb?: string;
+    fbaShipmentId?: string;
 }
+
+// --- Amazon FBA Shipment ID Dialog ---
+
+const FbaShipmentModal: FC<{ so: GroupedSalesOrder, onSave: (id: string) => void, onClose: () => void, isSaving: boolean }> = ({ so, onSave, onClose, isSaving }) => {
+    const [fbaId, setFbaId] = useState(so.fbaShipmentId || '');
+    
+    return (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[150] p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-amber-100 animate-in fade-in zoom-in-95 duration-200">
+                <div className="p-6 bg-[#232F3E] border-b border-gray-700 flex flex-col items-center text-center">
+                    <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mb-4">
+                        <GlobeIcon className="h-10 w-10 text-white" />
+                    </div>
+                    <h3 className="text-xl font-black text-white uppercase tracking-tight">Amazon FBA Requirement</h3>
+                    <p className="text-xs text-gray-400 mt-1">Order Ref: <span className="font-bold text-partners-green">{so.id}</span></p>
+                </div>
+                <div className="p-8">
+                    <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 mb-6 flex gap-3">
+                         <AlertIcon className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                         <p className="text-xs text-amber-800 leading-relaxed">FBA Shipment ID is required for Amazon fulfillment. This ID will be recorded in the PO Database before invoice generation.</p>
+                    </div>
+                    
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">FBA Shipment ID</label>
+                            <input 
+                                type="text"
+                                autoFocus
+                                value={fbaId}
+                                onChange={(e) => setFbaId(e.target.value)}
+                                placeholder="e.g. FBA15G89Z7J"
+                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9900] focus:border-[#FF9900] transition-all outline-none font-mono font-bold"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-3 mt-8">
+                        <button 
+                            disabled={!fbaId.trim() || isSaving}
+                            onClick={() => onSave(fbaId.trim())}
+                            className="w-full py-4 bg-[#FF9900] text-gray-900 font-black rounded-2xl shadow-xl shadow-amber-100 hover:bg-[#FF8C00] transition-all active:scale-[0.98] text-sm uppercase flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isSaving ? <RefreshIcon className="h-5 w-5 animate-spin"/> : <CheckCircleIcon className="h-5 w-5" />}
+                            {isSaving ? 'Saving & Generating...' : 'Confirm & Create Invoice'}
+                        </button>
+                        <button 
+                            disabled={isSaving}
+                            onClick={onClose}
+                            className="w-full py-3 text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // --- Combined Instamart Label Printing ---
 
@@ -173,122 +232,112 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
                 <body>
         `;
 
+        const styles = {
+          title: 'font-size: 20pt; font-weight: 900;',
+          sectionTitle: 'font-size: 16pt; font-weight: 800;',
+          label: 'font-size: 8pt; font-weight: 700; text-transform: uppercase;',
+          valueLarge: 'font-size: 18pt; font-weight: 900;',
+          valueXL: 'font-size: 24pt; font-weight: 900;',
+          valueMedium: 'font-size: 14pt; font-weight: 800;',
+          valueSmall: 'font-size: 11pt; font-weight: 700;',
+          monoCode: 'font-size: 14pt; font-weight: 900; font-family: monospace; text-transform: uppercase;',
+        };
+
         html += `
-  <div class="min-h-screen p-6 font-mono page-break">
-
-    <!-- HEADER -->
-    <div class=" border-b-2 border-black pb-2 mb-4">
-      <p class="text-xl font-black uppercase">
-        MASTER PACKING SLIP
-      </p>
-
-    </div>
-
-    <!-- PO / INVOICE -->
-    <div class="space-y-4 mb-6">
-      <div>
-        <p class="text-xs font-bold uppercase">PO Number</p>
-        <p class="text-3xl font-black uppercase">${so.poReference}</p>
-      </div>
-
-      <div>
-        <p class="text-xs font-bold uppercase">Invoice No.</p>
-        <p class="text-3xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p>
-      </div>
-    </div>
-
-    <!-- TOTALS -->
-    <div class="border-t-2 border-black pt-4 space-y-4">
-      <div>
-        <p class="text-xs font-bold uppercase">Total Box Count</p>
-        <p class="text-3xl font-black">${totalBoxes}</p>
-      </div>
-
-      <div>
-        <p class="text-xs font-bold uppercase">SKU Count</p>
-        <p class="text-3xl font-black">${so.items.length}</p>
-      </div>
-
-      <div>
-        <p class="text-xs font-bold uppercase">Total Quantity</p>
-        <p class="text-3xl font-black">${so.qty}</p>
-      </div>
-    </div>
-  </div>
-`;
-
-
-boxEntries.forEach(([boxId, items], idx) => {
-  html += `
-  <div class="min-h-screen p-6 font-mono ${idx < totalBoxes - 1 ? 'page-break' : ''}">
-
-    <!-- HEADER -->
-    <div class="flex justify-between items-end gap-4 border-b-2 border-black pb-2 mb-4">
-      <p class="text-xl font-black uppercase">
-        Instamart Box Label
-      </p>
-      <p class="text-xl font-black text-right">
-        BOX ${idx + 1}/${totalBoxes}
-      </p>
-    </div>
-
-    <!-- PO / INVOICE -->
-    <div class="border-b-2 border-black pb-3 mb-4 space-y-3">
-      <div>
-        <p class="text-xs font-bold uppercase">PO Number</p>
-        <p class="text-xl font-black uppercase">${so.poReference}</p>
-      </div>
-
-      <div>
-        <p class="text-xs font-bold uppercase">Invoice No.</p>
-        <p class="text-xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p>
-      </div>
-    </div>
-
-    <!-- SKU DETAILS -->
-    <div class="space-y-4 mb-4">
-      ${items.map(item => `
-        <div class="space-y-2">
-          <div>
-            <p class="text-xs font-bold uppercase">SKU Name</p>
-            <p class="text-xl font-black uppercase">${item.productName}</p>
+        <div class="label-container page-break">
+          <div style="padding: 10pt; margin-bottom: 20pt;">
+            <h1 style="${styles.title}" class="uppercase text-black">
+              Master Packing Slip
+            </h1>
           </div>
 
-          <div>
-            <p class="text-xs font-bold uppercase">SKU Code</p>
-            <p class="text-xl font-black uppercase">${item.itemCode}</p>
+          <div class="space-y-6">
+            <div>
+              <p style="${styles.label}">PO Number</p>
+              <p style="${styles.valueLarge}">${so.poReference}</p>
+            </div>
+
+            <div>
+              <p style="${styles.label}">Invoice No.</p>
+              <p style="${styles.valueLarge}">${so.invoiceNumber || 'N/A'}</p>
+            </div>
           </div>
 
-          <div>
-            <p class="text-xs font-bold uppercase">EAN Barcode</p>
-            <p class="text-xl font-black uppercase">${item.ean}</p>
-          </div>
+          <div class="grid grid-cols-1 gap-4 pt-6 border-t-2 border-black">
+            <div class="flex justify-between items-end">
+              <p style="${styles.label}">Total Box Count</p>
+              <p style="${styles.valueXL}">${totalBoxes}</p>
+            </div>
 
-          <div>
-            <p class="text-xs font-bold uppercase">Quantity</p>
-            <p class="text-xl font-black">${item.quantity}</p>
+            <div class="flex justify-between items-end">
+              <p style="${styles.label}">SKU Count</p>
+              <p style="${styles.valueXL}">${so.items.length}</p>
+            </div>
+
+            <div class="flex justify-between items-end">
+              <p style="${styles.label}">Total Quantity</p>
+              <p style="${styles.valueXL}">${so.qty}</p>
+            </div>
           </div>
         </div>
-      `).join('')}
-    </div>
+        `;
 
-    <!-- FOOTER -->
-    <div class="grid grid-cols-2 gap-4 border-t-2 border-black pt-4">
-      <div>
-        <p class="text-xs font-bold uppercase">Box ID</p>
-        <p class="text-lg font-bold">${boxId}</p>
-      </div>
+        boxEntries.forEach(([boxId, items], idx) => {
+          html += `
+          <div class="label-container ${idx < totalBoxes - 1 ? 'page-break' : ''}">
+            <h1 style="${styles.sectionTitle}" class="uppercase border-b-2 border-black pb-2 mb-6">
+              Instamart Box Label
+            </h1>
 
-      <div class="text-right">
-        <p class="text-xs font-bold uppercase">Packing Date</p>
-        <p class="text-lg font-bold">${packingDate}</p>
-      </div>
-    </div>
+            <div class="space-y-4 mb-6">
+              <div>
+                <p style="${styles.label}">PO Number</p>
+                <p style="${styles.valueLarge}">${so.poReference}</p>
+              </div>
 
-  </div>
-  `;
-});
+              <div>
+                <p style="${styles.label}">Invoice No.</p>
+                <p style="${styles.valueLarge}">${so.invoiceNumber || 'N/A'}</p>
+              </div>
+            </div>
 
+            <div class="mb-4">
+
+              <table class="w-full item-table">
+                <tbody>
+                  ${(items as any[]).map(item => `
+                    <tr>
+                      <td style="padding: 4pt 0;">
+                        <p style="${styles.monoCode}">SKU NAME: ${item.productName}</p>
+                        <p style="${styles.monoCode}" class="uppercase">SKU CODE: ${item.itemCode}</p>
+                        <p style="${styles.monoCode}">EAN BARCODE: ${item.ean}</p>
+                        <p style="${styles.monoCode}">QUANTITY: ${item.quantity}</p>            
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 pt-4 border-t-2 border-black">
+              <div>
+                <p style="${styles.label}">Box Count</p>
+                <p style="${styles.valueXL}">
+                  ${idx + 1} of ${totalBoxes}
+                </p>
+                <p style="font-size: 7pt; font-weight: 700; color: #9CA3AF;">
+                  ID: ${boxId}
+                </p>
+              </div>
+
+              <div class="text-right">
+                <p style="${styles.label}">Packing Date</p>
+                <p style="${styles.valueMedium}">${packingDate}</p>
+              </div>
+            </div>
+          </div>
+          `;
+        });
 
         html += `
                     <script>
@@ -461,15 +510,25 @@ const CopyField = ({ label, value, icon }: { label: string, value: string, icon:
     );
 };
 
-const BlinkitAppointmentModal: FC<{ so: GroupedSalesOrder, onClose: () => void }> = ({ so, onClose }) => {
+/* Fix: Redeclaration error fixed by maintaining only one definition of PortalHelperModal. */
+const PortalHelperModal: FC<{ so: GroupedSalesOrder, onClose: () => void }> = ({ so, onClose }) => {
+    const isZepto = so.channel.toLowerCase().includes('zepto');
+    const portalName = isZepto ? 'Zepto Brands' : 'Blinkit Partners';
+    const portalUrl = isZepto ? 'https://brands.zepto.co.in/' : 'https://partnersbiz.com';
+    const brandColor = isZepto ? 'bg-purple-600' : 'bg-yellow-400';
+    const logoText = isZepto ? 'z' : 'b';
+    const shadowColor = isZepto ? 'shadow-purple-100' : 'shadow-yellow-100';
+
     const amountWithTax = (so.amount * 1.05).toFixed(0);
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
             <div className="bg-partners-gray-bg rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-white">
                 <div className="p-6 bg-white border-b border-gray-100 flex justify-between items-center">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-yellow-100"><span className="font-black italic text-xl">b</span></div>
-                        <div><h3 className="text-lg font-bold text-gray-800">Blinkit Appointment Helper</h3><p className="text-xs text-gray-500">Portal: <span className="font-bold text-partners-green">partnersbiz.com</span></p></div>
+                        <div className={`w-10 h-10 ${brandColor} rounded-xl flex items-center justify-center text-white shadow-lg ${shadowColor}`}>
+                            <span className="font-black italic text-xl">{logoText}</span>
+                        </div>
+                        <div><h3 className="text-lg font-bold text-gray-800">{portalName} Helper</h3><p className="text-xs text-gray-500">Portal: <span className="font-bold text-partners-green">{portalUrl.replace('https://', '')}</span></p></div>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><XCircleIcon className="h-6 w-6 text-gray-400"/></button>
                 </div>
@@ -480,6 +539,7 @@ const BlinkitAppointmentModal: FC<{ so: GroupedSalesOrder, onClose: () => void }
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <CopyField label="PO Number" value={so.poReference} icon={<ClipboardListIcon className="h-3 w-3"/>} />
+                        <CopyField label="Fulfilled Quantity" value={String(so.qty)} icon={<CubeIcon className="h-3 w-3"/>} />
                         <CopyField label="Courier Name" value={so.carrier || 'Standard'} icon={<TruckIcon className="h-3 w-3"/>} />
                         <CopyField label="AWB Number" value={so.awb || 'N/A'} icon={<GlobeIcon className="h-3 w-3"/>} />
                         <CopyField label="Invoice Number" value={so.invoiceNumber || 'N/A'} icon={<InvoiceIcon className="h-3 w-3"/>} />
@@ -487,7 +547,7 @@ const BlinkitAppointmentModal: FC<{ so: GroupedSalesOrder, onClose: () => void }
                         <div className="md:col-span-2"><CopyField label="Invoice PDF URL" value={so.invoicePdfUrl || 'N/A'} icon={<ExternalLinkIcon className="h-3 w-3"/>} /></div>
                     </div>
                     <div className="flex flex-col items-center pt-2">
-                        <button onClick={() => window.open('https://partnersbiz.com', '_blank')} className="w-full py-4 bg-partners-green text-white font-bold rounded-2xl shadow-xl shadow-green-100 hover:bg-green-700 transition-all flex items-center justify-center gap-3 active:scale-95"><ExternalLinkIcon className="h-5 w-5" /> Open Blinkit Partners Portal</button>
+                        <button onClick={() => window.open(portalUrl, '_blank')} className={`w-full py-4 ${brandColor} text-white font-bold rounded-2xl shadow-xl ${shadowColor} hover:brightness-95 transition-all flex items-center justify-center gap-3 active:scale-95`}><ExternalLinkIcon className="h-5 w-5" /> Open {portalName} Portal</button>
                     </div>
                 </div>
             </div>
@@ -515,9 +575,10 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     const [isCreatingInvoice, setIsCreatingInvoice] = useState<string | null>(null);
     const [isPushingNimbus, setIsPushingNimbus] = useState<string | null>(null);
     const [isRefreshingSo, setIsRefreshingSo] = useState<string | null>(null);
-    const [blinkitModal, setBlinkitModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
+    const [portalHelper, setPortalHelper] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     const [instamartPrintPackModal, setInstamartPrintPackModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     const [shippingConfirm, setShippingConfirm] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
+    const [fbaShipmentModal, setFbaShipmentModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
     const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
@@ -611,7 +672,8 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         boxCount: eeBoxCount,
                         appointmentDate: po.appointmentDate,
                         appointmentRequestDate: po.appointmentRequestDate,
-                        ewb: item.ewb || po.ewb
+                        ewb: item.ewb || po.ewb,
+                        fbaShipmentId: item.fbaShipmentId || po.fbaShipmentId
                     };
                 } else {
                     const curPo = String(po.id || '');
@@ -639,6 +701,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     if (!groups[refCode].awb && awb) groups[refCode].awb = awb;
                     if (!groups[refCode].trackingStatus && trackingStatus) groups[refCode].trackingStatus = trackingStatus;
                     if (!groups[refCode].ewb) groups[refCode].ewb = item.ewb || po.ewb;
+                    if (!groups[refCode].fbaShipmentId) groups[refCode].fbaShipmentId = item.fbaShipmentId || po.fbaShipmentId;
                 }
                 groups[refCode].items.push(item);
                 groups[refCode].qty += effectiveQty;
@@ -690,7 +753,13 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         setIsRefreshingSo(null);
     };
 
-    const handleCreateZohoInvoiceAction = async (eeRef: string, poRef: string) => {
+    const handleCreateZohoInvoiceAction = async (eeRef: string, poRef: string, soObj?: GroupedSalesOrder) => {
+        // Amazon FBA Interception
+        if (soObj && (soObj.channel.toLowerCase().includes('amazon_fba') || soObj.channel.toLowerCase().includes('amazon fba'))) {
+            setFbaShipmentModal({ isOpen: true, so: soObj });
+            return;
+        }
+
         setIsCreatingInvoice(eeRef);
         try {
             const res = await createZohoInvoice(eeRef);
@@ -719,6 +788,37 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             }
         } catch (e) {
             addNotification('Network error.', 'error');
+        } finally {
+            setIsCreatingInvoice(null);
+        }
+    };
+
+    const handleFbaSaveAndInvoice = async (fbaId: string) => {
+        const so = fbaShipmentModal.so;
+        if (!so) return;
+
+        setIsCreatingInvoice(so.id);
+        try {
+            // Step 1: Update FBA ID in Sheet
+            const updateRes = await updateFBAShipmentId(so.poReference, fbaId);
+            if (updateRes.status !== 'success') {
+                throw new Error("Failed to save FBA ID: " + updateRes.message);
+            }
+
+            // Step 2: Proceed with Zoho Invoice
+            const res = await createZohoInvoice(so.id);
+            if (res.status === 'success') {
+                addNotification('FBA ID Saved & Invoice triggered.', 'success');
+                addLog('Amazon FBA Invoice', `FBA ID: ${fbaId}, Ref: ${so.id}`);
+                
+                // Refresh data
+                await refreshSingleSOState(so.poReference);
+                setFbaShipmentModal({ isOpen: false, so: null });
+            } else {
+                addNotification('Zoho Error: ' + res.message, 'error');
+            }
+        } catch (e: any) {
+            addNotification(e.message || 'Workflow failed.', 'error');
         } finally {
             setIsCreatingInvoice(null);
         }
@@ -780,7 +880,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         const eeStatusLower = so.originalEeStatus.toLowerCase().trim();
         const canInvoice = !so.invoiceNumber && eeStatusLower !== 'open' && (eeStatusLower === 'confirmed' || so.status === 'Batch Created');
 
-        if (canInvoice) return { label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', color: 'bg-purple-600 text-white hover:bg-purple-700', onClick: () => handleCreateZohoInvoiceAction(so.id, so.poReference), disabled: isExecuting };
+        if (canInvoice) return { label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', color: 'bg-purple-600 text-white hover:bg-purple-700', onClick: () => handleCreateZohoInvoiceAction(so.id, so.poReference, so), disabled: isExecuting };
         if (so.status === 'Invoiced' && !so.awb && so.boxCount > 0) {
             const isInstamart = so.channel.toLowerCase().includes('instamart');
             const ewbMissing = (so.invoiceTotal || 0) >= 50000 && !so.ewb;
@@ -813,8 +913,16 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm">
-            {blinkitModal.isOpen && blinkitModal.so && <BlinkitAppointmentModal so={blinkitModal.so} onClose={() => setBlinkitModal({ isOpen: false, so: null })} />}
+            {portalHelper.isOpen && portalHelper.so && <PortalHelperModal so={portalHelper.so} onClose={() => setPortalHelper({ isOpen: false, so: null })} />}
             {instamartPrintPackModal.isOpen && instamartPrintPackModal.so && <InstamartPrintManager so={instamartPrintPackModal.so} onClose={() => setInstamartPrintPackModal({ isOpen: false, so: null })} />}
+            {fbaShipmentModal.isOpen && fbaShipmentModal.so && (
+                <FbaShipmentModal 
+                    so={fbaShipmentModal.so} 
+                    isSaving={isCreatingInvoice === fbaShipmentModal.so.id}
+                    onClose={() => setFbaShipmentModal({ isOpen: false, so: null })}
+                    onSave={handleFbaSaveAndInvoice}
+                />
+            )}
             {shippingConfirm.isOpen && shippingConfirm.so && (
                 <ShippingConfirmationModal 
                     so={shippingConfirm.so} 
@@ -939,7 +1047,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                             <InvoiceIcon className="h-8 w-8 text-purple-200 mb-2" />
                                                                             <p className="text-xs font-bold text-purple-400 uppercase">No Invoice Generated</p>
                                                                             {(!so.invoiceNumber && so.originalEeStatus.toLowerCase().trim() !== 'open' && (so.originalEeStatus.toLowerCase().trim() === 'confirmed' || so.status === 'Batch Created')) ? (
-                                                                                <button onClick={() => handleCreateZohoInvoiceAction(so.id, so.poReference)} disabled={!!isCreatingInvoice} className="mt-4 px-4 py-2 bg-purple-600 text-white text-[11px] font-bold rounded-lg shadow-sm hover:bg-purple-700 flex items-center gap-2 transition-all active:scale-95">{isCreatingInvoice === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <PlusIcon className="h-3 w-3" />}{isCreatingInvoice === so.id ? 'Creating...' : 'Create Zoho Invoice'}</button>
+                                                                                <button onClick={() => handleCreateZohoInvoiceAction(so.id, so.poReference, so)} disabled={!!isCreatingInvoice} className="mt-4 px-4 py-2 bg-purple-600 text-white text-[11px] font-bold rounded-lg shadow-sm hover:bg-purple-700 flex items-center gap-2 transition-all active:scale-95">{isCreatingInvoice === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <PlusIcon className="h-3 w-3" />}{isCreatingInvoice === so.id ? 'Creating...' : 'Create Zoho Invoice'}</button>
                                                                             ) : (<p className="mt-3 text-[10px] text-gray-400 italic bg-gray-100 px-3 py-1 rounded-full border border-gray-200">{so.originalEeStatus.toLowerCase().trim() === 'open' ? 'Awaiting Confirmation (Status: Open)' : 'Pending Picking/Batching in EasyEcom'}</p>)}
                                                                         </div>
                                                                     )}
@@ -996,7 +1104,25 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                 <div className={`p-4 rounded-xl border ${so.status === 'Returned' ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Return Status (RTO)</p>{so.status === 'Returned' ? <div className="space-y-2"><p className="text-xs font-bold text-red-600">{so.rtoStatus || 'Returned'}</p><div><p className="text-[9px] font-bold text-gray-400">Return AWB</p><p className="text-xs font-mono font-bold text-red-600">{so.rtoAwb || 'N/A'}</p></div></div> : <div className="flex flex-col items-center justify-center py-2"><CheckCircleIcon className="h-6 w-6 text-gray-200" /><p className="text-[10px] font-bold text-gray-400 mt-1 uppercase">No Returns</p></div>}</div>
                                                             </> : <div className="md:col-span-3 p-12 border-2 border-dashed border-gray-100 rounded-2xl flex flex-col items-center justify-center text-center">{!so.invoiceNumber ? <><LockClosedIcon className="h-8 w-8 text-gray-200 mb-3" /><p className="text-sm font-bold text-gray-400 uppercase">Logistics Pending Invoice Generation</p></> : so.boxCount === 0 ? <><div className="p-4 bg-red-50 rounded-xl border border-red-100 mb-3"><CubeIcon className="h-8 w-8 text-red-500 mx-auto mb-2" /><p className="text-sm font-bold text-red-600 uppercase">Missing Physical Box Data</p></div><p className="text-xs text-red-400">Update box count in the backend to enable shipping.</p></> : <><TruckIcon className="h-8 w-8 text-blue-200 mb-3" /><p className="text-sm font-bold text-blue-400 uppercase">Invoice Ready for Shipment</p><p className="text-xs text-blue-300 mt-1">Generate AWB by clicking the 'Ship with Nimbus' button above.</p></>}</div>}
                                                             </div>
-                                                            {so.awb && so.channel.toLowerCase().includes('blinkit') && so.status !== 'Shipped' && so.status !== 'Returned' && (<div className="mt-4 bg-yellow-50 border border-yellow-200 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-2"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center text-white shadow-lg"><span className="font-black italic text-xl">b</span></div><div><p className="text-xs font-bold text-yellow-800 uppercase">Blinkit Portal Action Required</p><p className="text-[10px] text-yellow-600 font-medium">AWB assigned. Generate appointment pass before dispatching.</p></div></div><button onClick={(e) => { e.stopPropagation(); setBlinkitModal({ isOpen: true, so }); }} className="px-6 py-2.5 bg-yellow-500 text-white text-[11px] font-bold rounded-xl shadow-md hover:bg-yellow-600 transition-all flex items-center gap-2"><CalendarIcon className="h-4 w-4" />Get Appointment Details</button></div>)}
+                                                            {so.awb && (so.channel.toLowerCase().includes('blinkit') || so.channel.toLowerCase().includes('zepto')) && so.status !== 'Shipped' && so.status !== 'Returned' && (
+                                                                <div className={`mt-4 border p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-2 ${so.channel.toLowerCase().includes('zepto') ? 'bg-purple-50 border-purple-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg ${so.channel.toLowerCase().includes('zepto') ? 'bg-purple-600' : 'bg-yellow-400'}`}>
+                                                                            <span className="font-black italic text-xl">{so.channel.toLowerCase().includes('zepto') ? 'z' : 'b'}</span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <p className={`text-xs font-bold uppercase ${so.channel.toLowerCase().includes('zepto') ? 'text-purple-800' : 'text-yellow-800'}`}>{so.channel.toLowerCase().includes('zepto') ? 'Zepto Brands' : 'Blinkit'} Portal Action Required</p>
+                                                                            <p className={`text-[10px] font-medium ${so.channel.toLowerCase().includes('zepto') ? 'text-purple-600' : 'text-yellow-600'}`}>AWB assigned. Generate appointment pass before dispatching.</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <button 
+                                                                        onClick={(e) => { e.stopPropagation(); setPortalHelper({ isOpen: true, so }); }} 
+                                                                        className={`px-6 py-2.5 text-white text-[11px] font-bold rounded-xl shadow-md transition-all flex items-center gap-2 ${so.channel.toLowerCase().includes('zepto') ? 'bg-purple-600 hover:bg-purple-700' : 'bg-yellow-500 hover:bg-yellow-600'}`}
+                                                                    >
+                                                                        <CalendarIcon className="h-4 w-4" />Get Appointment Details
+                                                                    </button>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                         <div>
                                                             <div className="flex justify-between items-center mb-4">
