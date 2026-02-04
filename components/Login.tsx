@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { ShieldCheckIcon, RefreshIcon, XCircleIcon, LockClosedIcon, CheckCircleIcon, InfoIcon } from './icons/Icons';
+import { ShieldCheckIcon, RefreshIcon, XCircleIcon, LockClosedIcon, InfoIcon } from './icons/Icons';
 import { loginWithGoogle } from '../services/api';
 
 interface LoginProps {
@@ -14,37 +14,43 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     const googleButtonRef = useRef<HTMLDivElement>(null);
     const initializedRef = useRef(false);
 
-    /**
-     * TO FIX THE 401 ERROR:
-     * 1. Go to https://console.cloud.google.com/
-     * 2. Go to APIs & Services > Credentials
-     * 3. Create an "OAuth 2.0 Client ID" for "Web Application"
-     * 4. Add your domain to "Authorized JavaScript origins"
-     * 5. Paste the Client ID below:
-     */
-    const CLIENT_ID = "619088514107-p8m1v9v7u1i6t0j9m9f9j1v1l1l1l1l.apps.googleusercontent.com";
+    // Using the specific working Client ID provided
+    const CLIENT_ID = "763018750068-sbk6u9ka6k1r665h92tlqm3b796tlqm3b796td5kp.apps.googleusercontent.com";
+
+    const handleGoogleLogin = async (response: any) => {
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            const result = await loginWithGoogle(response.credential);
+            if (result.status === 'success' && result.user) {
+                onLoginSuccess(result.user);
+            } else {
+                setError(result.message || 'Access Denied. Your email is not authorized for this portal.');
+            }
+        } catch (e) {
+            console.error(e);
+            setError('Verification failed. Please ensure your backend GAS script is deployed correctly.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const initializeGoogleSignIn = () => {
         const google = (window as any).google;
         if (google && google.accounts && !initializedRef.current) {
             try {
                 google.accounts.id.initialize({
-                    client_id: CLIENT_ID,
-                    callback: handleGoogleResponse,
-                    auto_select: false,
-                    cancel_on_tap_outside: true,
+                    client_id: "763018750068-sbk6u9ka6k1r665h92tlqm3b796td5kp.apps.googleusercontent.com",
+                    callback: handleGoogleLogin,
                 });
 
                 if (googleButtonRef.current) {
-                    // Fix: Property 'google' does not exist on type 'Window & typeof globalThis'. 
-                    // Using the 'google' variable which is already cast as any to bypass the missing type definitions for the Google Identity Services SDK.
                     google.accounts.id.renderButton(googleButtonRef.current, {
-                        type: "standard",
                         theme: "outline",
                         size: "large",
                         text: "signin_with",
                         shape: "pill",
-                        logo_alignment: "left",
                         width: 320
                     });
                     initializedRef.current = true;
@@ -78,25 +84,6 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             if (script) script.removeEventListener('load', checkGoogle);
         };
     }, []);
-
-    const handleGoogleResponse = async (response: any) => {
-        setIsLoading(true);
-        setError(null);
-
-        try {
-            const result = await loginWithGoogle(response.credential);
-            if (result.status === 'success' && result.user) {
-                onLoginSuccess(result.user);
-            } else {
-                setError(result.message || 'Access Denied. Your email is not authorized for this portal.');
-            }
-        } catch (e) {
-            console.error(e);
-            setError('Verification failed. Please ensure your backend GAS script is deployed correctly.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     const handleBypass = () => {
         onLoginSuccess({
@@ -150,13 +137,14 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
                         <div className="space-y-8 flex flex-col items-center">
                             <p className="text-gray-500 text-sm text-center font-medium leading-relaxed px-4">
-                                This dashboard is restricted. Use your <span className="font-bold text-gray-800">@cubelelo.com</span> account or the developer bypass.
+                                This dashboard is restricted. Use your <span className="font-bold text-gray-800">@cubelelo.com</span> account to continue.
                             </p>
 
                             <div className="w-full flex flex-col items-center gap-4 min-h-[50px] relative">
-                                {/* Google Sign-In Button */}
+                                {/* Google Sign-In Button Container */}
                                 <div 
                                     ref={googleButtonRef} 
+                                    id="googleBtn"
                                     className={`transition-all duration-700 ${!isSdkLoaded || isLoading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
                                 ></div>
                                 
@@ -199,7 +187,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                         <p className="text-gray-400 text-[10px] uppercase font-bold tracking-[0.3em]">
                             &copy; 2024 CUBELELO PRIVATE LIMITED
                         </p>
-                        <p className="text-gray-300 text-[8px] font-mono tracking-widest">BUILD 1.0.4-SECURE-STABLE</p>
+                        <p className="text-gray-300 text-[8px] font-mono tracking-widest">BUILD 1.0.6-SECURE-STABLE</p>
                     </div>
                 </div>
             </div>
