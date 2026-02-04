@@ -15,7 +15,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     const initializedRef = useRef(false);
 
     // Using the specific working Client ID provided
-    const CLIENT_ID = "763018750068-sbk6u9ka6k1r665h92tlqm3b796tlqm3b796td5kp.apps.googleusercontent.com";
+    const CLIENT_ID = "763018750068-sbk6u9ka6k1r665h92tlqm3b796td5kp.apps.googleusercontent.com";
 
     const handleGoogleLogin = async (response: any) => {
         setIsLoading(true);
@@ -28,9 +28,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             } else {
                 setError(result.message || 'Access Denied. Your email is not authorized for this portal.');
             }
-        } catch (e) {
-            console.error(e);
-            setError('Verification failed. Please ensure your backend GAS script is deployed correctly.');
+        } catch (e: any) {
+            console.error("Login verification error:", e);
+            // Display the specific error message from the API service
+            setError(e.message || 'Verification failed. Please check your backend configuration.');
         } finally {
             setIsLoading(false);
         }
@@ -41,8 +42,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         if (google && google.accounts && !initializedRef.current) {
             try {
                 google.accounts.id.initialize({
-                    client_id: "763018750068-sbk6u9ka6k1r665h92tlqm3b796td5kp.apps.googleusercontent.com",
+                    client_id: CLIENT_ID,
                     callback: handleGoogleLogin,
+                    auto_select: false,
+                    cancel_on_tap_outside: true,
                 });
 
                 if (googleButtonRef.current) {
@@ -131,7 +134,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                         {error && (
                             <div className="mb-8 p-4 bg-red-50 border border-red-100 text-red-700 rounded-2xl text-sm flex items-start gap-3 animate-in shake duration-300">
                                 <XCircleIcon className="h-5 w-5 flex-shrink-0 mt-0.5" />
-                                <span className="font-bold">{error}</span>
+                                <div className="flex flex-col gap-1">
+                                    <span className="font-bold">Connection Failed</span>
+                                    <span className="text-xs opacity-80">{error}</span>
+                                </div>
                             </div>
                         )}
 
@@ -187,7 +193,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                         <p className="text-gray-400 text-[10px] uppercase font-bold tracking-[0.3em]">
                             &copy; 2024 CUBELELO PRIVATE LIMITED
                         </p>
-                        <p className="text-gray-300 text-[8px] font-mono tracking-widest">BUILD 1.0.6-SECURE-STABLE</p>
+                        <p className="text-gray-300 text-[8px] font-mono tracking-widest">BUILD 1.0.7-SECURE-STABLE</p>
                     </div>
                 </div>
             </div>

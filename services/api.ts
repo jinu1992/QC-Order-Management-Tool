@@ -1,41 +1,70 @@
 import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePocMapping, User, UploadMetadata } from '../types';
 
+/**
+ * !!! IMPORTANT !!!
+ * YOU MUST REPLACE THIS URL WITH YOUR OWN DEPLOYED WEB APP URL FROM GOOGLE APPS SCRIPT
+ * 1. Open your GAS Editor
+ * 2. Click "Deploy" -> "New Deployment"
+ * 3. Select "Web App"
+ * 4. Execute as: "Me" | Who has access: "Anyone"
+ * 5. Copy the "Web app URL" and paste it here.
+ */
 const API_URL = 'https://script.google.com/macros/s/AKfycbwBDSNnN_xKlZc4cTwwKthd7-Nq8IE83csNdNHODP55EnVEz-gfWzcvzYdxGeNbJSPzZQ/exec'; 
 
 /**
  * Shared helper for POST requests to Google Apps Script.
  */
 const postToScript = async (payload: any) => {
-    if (!API_URL || API_URL.includes('YOUR_SCRIPT_ID')) throw new Error("API URL is not configured.");
+    if (!API_URL || API_URL.includes('macros/s/template-id')) {
+        throw new Error("Backend API URL is not configured. Please update services/api.ts");
+    }
     
-    console.log(`[API] Executing ${payload.action}:`, payload);
+    console.log(`[API-OUT] ${payload.action}:`, payload);
     
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
             mode: 'cors',
             redirect: 'follow',
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            headers: {
+                // Do not set Content-Type to application/json for GAS POST 
+                // It triggers a complex CORS preflight that GAS doesn't handle well.
+                // GAS prefers the payload as the raw body.
+            }
         });
         
+        const contentType = response.headers.get("content-type");
+        
         if (!response.ok) {
-            console.error(`[API] HTTP Error ${response.status}: ${response.statusText}`);
-            throw new Error(`Server returned status ${response.status}`);
+            throw new Error(`Server Error: ${response.status} ${response.statusText}`);
+        }
+
+        // If GAS returns HTML instead of JSON, it usually means a redirect to a login page or a script error
+        if (contentType && contentType.includes("text/html")) {
+            const text = await response.text();
+            console.error("[API-ERROR] Received HTML instead of JSON. Full response:", text);
+            throw new Error("Backend returned HTML instead of JSON. Is your script deployed to 'Anyone'?");
         }
         
-        return response;
+        const result = await response.json();
+        console.log(`[API-IN] ${payload.action} Result:`, result);
+        return result;
     } catch (error: any) {
-        console.error("[API] Network/Script Failure:", error);
+        console.error("[API-CRITICAL] Network/Script Failure:", error);
+        // Provide more descriptive errors for the UI
+        if (error.message.includes('fetch')) {
+            throw new Error("Network error: Cannot reach the backend. Check your Internet and API_URL.");
+        }
         throw error;
     }
 };
 
 export const loginWithGoogle = async (credentialToken: string): Promise<{status: string, message?: string, user?: User}> => {
-    const response = await postToScript({ 
+    return await postToScript({ 
         action: 'loginGoogle', 
         idToken: credentialToken 
     });
-    return await response.json();
 };
 
 export const fetchPackingData = async (referenceCode: string): Promise<any[]> => {
@@ -51,39 +80,35 @@ export const fetchPackingData = async (referenceCode: string): Promise<any[]> =>
 };
 
 export const logFileUpload = async (functionId: string, userName: string, fileData?: string, fileName?: string): Promise<{status: string, message?: string}> => {
-    const response = await postToScript({ 
+    return await postToScript({ 
         action: 'logFileUpload', 
         functionId, 
         userName, 
         fileData, 
         fileName 
     });
-    return await response.json();
 };
 
 export const createZohoInvoice = async (eeReferenceCode: string): Promise<{status: string, message?: string}> => {
-    const response = await postToScript({ 
+    return await postToScript({ 
         action: 'createZohoInvoice', 
         eeReferenceCode 
     });
-    return await response.json();
 };
 
 export const pushToNimbusPost = async (eeReferenceCode: string): Promise<{status: string, message?: string, awb?: string}> => {
-    const response = await postToScript({ 
+    return await postToScript({ 
         action: 'pushToNimbus', 
         eeReferenceCode 
     });
-    return await response.json();
 };
 
 export const updateFBAShipmentId = async (poNumber: string, fbaShipmentId: string): Promise<{status: string, message?: string}> => {
-    const response = await postToScript({ 
+    return await postToScript({ 
         action: 'updateFBAShipmentId', 
         poNumber,
         fbaShipmentId
     });
-    return await response.json();
 };
 
 export const fetchUploadMetadata = async (): Promise<UploadMetadata[]> => {
@@ -97,13 +122,11 @@ export const fetchUploadMetadata = async (): Promise<UploadMetadata[]> => {
 };
 
 export const loginUser = async (email: string, password: string): Promise<{status: string, message?: string, user?: User}> => {
-    const response = await postToScript({ action: 'login', email, password });
-    return await response.json();
+    return await postToScript({ action: 'login', email, password });
 };
 
 export const resetUserPassword = async (userId: string) => {
-    const response = await postToScript({ action: 'resetPassword', userId });
-    return await response.json();
+    return await postToScript({ action: 'resetPassword', userId });
 };
 
 export const fetchUsers = async (): Promise<User[]> => {
@@ -128,13 +151,11 @@ export const fetchUsers = async (): Promise<User[]> => {
 };
 
 export const saveUserToSheet = async (user: User) => {
-    const response = await postToScript({ action: 'saveUser', ...user });
-    return await response.json();
+    return await postToScript({ action: 'saveUser', ...user });
 };
 
 export const deleteUserFromSheet = async (userId: string) => {
-    const response = await postToScript({ action: 'deleteUser', userId });
-    return await response.json();
+    return await postToScript({ action: 'deleteUser', userId });
 };
 
 export const fetchInventoryFromSheet = async (): Promise<InventoryItem[]> => {
@@ -147,8 +168,7 @@ export const fetchInventoryFromSheet = async (): Promise<InventoryItem[]> => {
 };
 
 export const syncInventoryFromEasyEcom = async (): Promise<{status: string, message?: string}> => {
-    const response = await postToScript({ action: 'syncInventory' });
-    return await response.json();
+    return await postToScript({ action: 'syncInventory' });
 };
 
 export const fetchPurchaseOrders = async (poNumber?: string): Promise<PurchaseOrder[]> => {
@@ -183,11 +203,10 @@ export const sendAppointmentEmail = async (params: {
   toEmails: string,
   ccEmails: string
 }) => {
-    const response = await postToScript({
+    return await postToScript({
         action: 'sendAppointmentEmail',
         ...params
     });
-    return await response.json();
 };
 
 export const fetchChannelConfigs = async (): Promise<ChannelConfig[]> => {
@@ -384,70 +403,59 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
 };
 
 export const createInventoryItem = async (item: Partial<InventoryItem>) => {
-     const response = await postToScript({ action: 'createItem', ...item });
-     return await response.json();
+     return await postToScript({ action: 'createItem', ...item });
 };
 
 export const updateInventoryPrice = async (channel: string, articleCode: string, newPrice: number) => {
-    const response = await postToScript({ action: 'updatePrice', channel, articleCode, newPrice });
-    return await response.json();
+    return await postToScript({ action: 'updatePrice', channel, articleCode, newPrice });
 };
 
 export const saveChannelConfig = async (config: ChannelConfig) => {
-    const response = await postToScript({ action: 'saveChannelConfig', ...config });
-    return await response.json();
+    return await postToScript({ action: 'saveChannelConfig', ...config });
 };
 
 export const saveSystemConfig = async (config: any) => {
-    const response = await postToScript({ action: 'saveSystemConfig', ...config });
-    return await response.json();
+    return await postToScript({ action: 'saveSystemConfig', ...config });
 };
 
 export const createEasyEcomCustomer = async (details: any) => {
-    const response = await postToScript({ action: 'createEasyEcomCustomer', ...details });
-    return await response.json();
+    return await postToScript({ action: 'createEasyEcomCustomer', ...details });
 };
 
 export const syncZohoContacts = async () => {
-    const response = await postToScript({ action: 'syncZohoContacts' });
-    return await response.json();
+    return await postToScript({ action: 'syncZohoContacts' });
 };
 
 export const syncSinglePO = async (poNumber: string) => {
-    const response = await postToScript({ action: 'syncSinglePO', poNumber });
-    return await response.json();
+    return await postToScript({ action: 'syncSinglePO', poNumber });
 };
 
 export const syncEasyEcomShipments = async () => {
-    const response = await postToScript({ action: 'fetchEasyEcomShipments' });
-    return await response.json();
+    return await postToScript({ action: 'fetchEasyEcomShipments' });
 };
 
 export const requestZohoSync = async (contactId: string) => {
-    const response = await postToScript({ 
+    return await postToScript({ 
         action: 'syncZohoContactToEasyEcom', 
         contactId: String(contactId).trim() 
     });
-    return await response.json();
 };
 
 export const updatePOStatus = async (poNumber: string, status: string) => {
-    const response = await postToScript({ 
+    return await postToScript({ 
         action: 'updatePOStatus', 
         poNumber,
         status
     });
-    return await response.json();
 };
 
 export const cancelPOLineItem = async (poNumber: string, articleCode: string) => {
     console.log(`[API] Triggering cancelPOLineItem for PO: ${poNumber}, SKU: ${articleCode}`);
-    const response = await postToScript({ 
+    return await postToScript({ 
         action: 'cancelLineItem', 
         poNumber: String(poNumber).trim(),
         articleCode: String(articleCode).trim()
     });
-    return await response.json();
 };
 
 export const cancelPurchaseOrder = async (poNumber: string) => {
@@ -465,11 +473,10 @@ export const pushToEasyEcom = async (po: PurchaseOrder, selectedArticleCodes: st
     const isPartial = (po.items || []).length > itemsToSend.length;
     const { items: _, id: __, ...poMetadata } = po;
 
-    const response = await postToScript({
+    return await postToScript({
         action: 'pushToEasyEcom',
         ...poMetadata,
         items: itemsToSend,
         isPartial
     });
-    return await response.json();
 };

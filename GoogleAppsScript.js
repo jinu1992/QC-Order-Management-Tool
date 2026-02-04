@@ -1,4 +1,3 @@
-
 const SHEET_PO_DB = "PO_Database";
 const SHEET_INVENTORY = "Master_SKU_Mapping";
 const SHEET_CHANNEL_CONFIG = "Channel_Config";
@@ -8,19 +7,40 @@ const SHEET_PO_REPOSITORY = "PO_Repository";
 const LOG_DEBUG_SHEET = "System_Logs";
 const SHEET_PACKING_DATA = "Master_Packing_Data";
 
-const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet() ? SpreadsheetApp.getActiveSpreadsheet().getId() : "10pI-pT9-7l3mD9XqR9vLwT3KxY9Mv6A8fN2u-b0vA4I"; 
+/**
+ * !!! IMPORTANT !!!
+ * If you created a standalone script, paste your Spreadsheet ID here.
+ * You can find it in the URL of your sheet: https://docs.google.com/spreadsheets/d/[ID]/edit
+ */
+const SPREADSHEET_ID = "10pI-pT9-7l3mD9XqR9vLwT3KxY9Mv6A8fN2u-b0vA4I"; 
+
+function getSpreadsheet() {
+  try {
+    // Try to get active spreadsheet first (if script is bound to sheet)
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (ss) return ss;
+    // Fallback to ID
+    return SpreadsheetApp.openById(SPREADSHEET_ID);
+  } catch (e) {
+    throw new Error("Could not access Spreadsheet. Check SPREADSHEET_ID and sharing permissions.");
+  }
+}
 
 // Handle GET requests
 function doGet(e) {
   const action = e.parameter.action;
-  if (action === 'getPurchaseOrders') return getPurchaseOrders(e.parameter.poNumber);
-  if (action === 'getInventory') return getInventory();
-  if (action === 'getChannelConfigs') return getChannelConfigs();
-  if (action === 'getSystemConfig') return getSystemConfig();
-  if (action === 'getUsers') return getUsers();
-  if (action === 'getUploadMetadata') return getUploadMetadata();
-  if (action === 'getPackingData') return getPackingData(e.parameter.referenceCode);
-  return responseJSON({status: 'error', message: 'Invalid action'});
+  try {
+    if (action === 'getPurchaseOrders') return getPurchaseOrders(e.parameter.poNumber);
+    if (action === 'getInventory') return getInventory();
+    if (action === 'getChannelConfigs') return getChannelConfigs();
+    if (action === 'getSystemConfig') return getSystemConfig();
+    if (action === 'getUsers') return getUsers();
+    if (action === 'getUploadMetadata') return getUploadMetadata();
+    if (action === 'getPackingData') return getPackingData(e.parameter.referenceCode);
+    return responseJSON({status: 'error', message: 'Invalid action'});
+  } catch (err) {
+    return responseJSON({status: 'error', message: err.toString()});
+  }
 }
 
 // Handle POST requests
@@ -77,9 +97,9 @@ function handleGoogleLogin(idToken) {
     const email = tokenInfo.email.toLowerCase().trim();
 
     // 2. Check if email exists in Users sheet
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ss = getSpreadsheet();
     const userSheet = ss.getSheetByName(SHEET_USERS);
-    if (!userSheet) return responseJSON({ status: 'error', message: 'Security database not configured' });
+    if (!userSheet) return responseJSON({ status: 'error', message: 'Security database (Users sheet) not found' });
 
     const data = userSheet.getDataRange().getValues();
     const headers = data[0].map(h => String(h).trim().toLowerCase());
@@ -87,6 +107,8 @@ function handleGoogleLogin(idToken) {
     const nameIdx = headers.indexOf("name");
     const roleIdx = headers.indexOf("role");
     const idIdx = headers.indexOf("id");
+
+    if (emailIdx === -1) return responseJSON({ status: 'error', message: 'Users sheet missing "Email" column' });
 
     for (let i = 1; i < data.length; i++) {
       const rowEmail = String(data[i][emailIdx]).toLowerCase().trim();
@@ -106,16 +128,16 @@ function handleGoogleLogin(idToken) {
 
     return responseJSON({ 
       status: 'error', 
-      message: `Account '${email}' is not authorized. Please contact the administrator.` 
+      message: `Account '${email}' is not authorized. Add it to the 'Users' sheet first.` 
     });
 
   } catch (e) {
-    return responseJSON({ status: 'error', message: 'Verification failed: ' + e.toString() });
+    return responseJSON({ status: 'error', message: 'GAS Error: ' + e.toString() });
   }
 }
 
 function getPurchaseOrders(poNumberFilter) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_PO_DB);
   if (!sheet) return responseJSON({status: 'error', message: `Sheet "${SHEET_PO_DB}" not found.`});
   const rawData = sheet.getDataRange().getValues();
@@ -136,7 +158,7 @@ function getPurchaseOrders(poNumberFilter) {
 }
 
 function getUploadMetadata() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   const sheet = getOrCreateSheet(SHEET_UPLOAD_LOGS, ["ID", "FunctionName", "LastUploadedBy", "LastUploadedAt", "Status", "FileName"]);
   const rows = getDataAsJSON(sheet);
   const map = {};
@@ -147,19 +169,19 @@ function getUploadMetadata() {
 }
 
 function getUsers() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   const sheet = getOrCreateSheet(SHEET_USERS, ["ID", "Name", "Email", "Contact", "Role", "Avatar", "Password", "IsInitialized"]);
   return responseJSON({status: 'success', data: getDataAsJSON(sheet)});
 }
 
 function getInventory() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_INVENTORY);
   return responseJSON({status: 'success', data: getDataAsJSON(sheet)});
 }
 
 function getChannelConfigs() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_CHANNEL_CONFIG);
   return responseJSON({status: 'success', data: getDataAsJSON(sheet)});
 }
@@ -190,7 +212,7 @@ function responseJSON(data) {
 }
 
 function getOrCreateSheet(name, headers) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   let sheet = ss.getSheetByName(name);
   if (!sheet) { sheet = ss.insertSheet(name); sheet.appendRow(headers); }
   return sheet;
@@ -198,14 +220,14 @@ function getOrCreateSheet(name, headers) {
 
 function debugLog(action, data) {
   try {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ss = getSpreadsheet();
     let sheet = getOrCreateSheet(LOG_DEBUG_SHEET, ["Timestamp", "Action", "Raw Payload"]);
     sheet.appendRow([new Date(), action, JSON.stringify(data)]);
   } catch (err) {}
 }
 
 function saveUser(user) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   const sheet = getOrCreateSheet(SHEET_USERS, ["ID", "Name", "Email", "Contact", "Role", "Avatar", "Password", "IsInitialized"]);
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
@@ -239,7 +261,7 @@ function saveUser(user) {
 }
 
 function deleteUser(userId) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_USERS);
   if (!sheet) return responseJSON({status: 'error'});
   const data = sheet.getDataRange().getValues();
