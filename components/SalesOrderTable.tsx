@@ -200,144 +200,121 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
 
         const packingDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
-        let html = `
-            <html>
-                <head>
-                    <title>Instamart Labels - ${so.id}</title>
-                    <script src="https://cdn.tailwindcss.com"></script>
-                    <style>
-                        @media print {
-                            @page { size: 4in 6in; margin: 0; }
-                            body { margin: 0; -webkit-print-color-adjust: exact; color: black; }
-                            .page-break { page-break-after: always; }
-                        }
-                        .label-container {
-                            width: 4in;
-                            height: 6in;
-                            padding: 0.25in;
-                            box-sizing: border-box;
-                            display: flex;
-                            flex-direction: column;
-                            background: white;
-                            font-family: sans-serif;
-                            color: black;
-                        }
-                        .item-table th, .item-table td {
-                            text-align: left;
-                            padding: 3pt 0;
-                            border-bottom: 0.5pt solid #ddd;
-                        }
-                    </style>
-                </head>
-                <body>
-        `;
-
-        const styles = {
-          title: 'font-size: 20pt; font-weight: 900;',
-          sectionTitle: 'font-size: 16pt; font-weight: 800;',
-          label: 'font-size: 8pt; font-weight: 700; text-transform: uppercase;',
-          valueLarge: 'font-size: 18pt; font-weight: 900;',
-          valueXL: 'font-size: 24pt; font-weight: 900;',
-          valueMedium: 'font-size: 14pt; font-weight: 800;',
-          valueSmall: 'font-size: 11pt; font-weight: 700;',
-          monoCode: 'font-size: 14pt; font-weight: 900; font-family: monospace; text-transform: uppercase;',
-        };
-
         html += `
-        <div class="label-container page-break">
-          <div style="padding: 10pt; margin-bottom: 20pt;">
-            <h1 style="${styles.title}" class="uppercase text-black">
-              Master Packing Slip
-            </h1>
+  <div class="min-h-screen p-6 font-mono page-break">
+
+    <!-- HEADER -->
+    <div class=" border-b-2 border-black pb-2 mb-4">
+      <p class="text-xl font-black uppercase">
+        MASTER PACKING SLIP
+      </p>
+
+    </div>
+
+    <!-- PO / INVOICE -->
+    <div class="space-y-4 mb-6">
+      <div>
+        <p class="text-xs font-bold uppercase">PO Number</p>
+        <p class="text-3xl font-black uppercase">${so.poReference}</p>
+      </div>
+
+      <div>
+        <p class="text-xs font-bold uppercase">Invoice No.</p>
+        <p class="text-3xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p>
+      </div>
+    </div>
+
+    <!-- TOTALS -->
+    <div class="border-t-2 border-black pt-4 space-y-4">
+      <div>
+        <p class="text-xs font-bold uppercase">Total Box Count</p>
+        <p class="text-3xl font-black">${totalBoxes}</p>
+      </div>
+
+      <div>
+        <p class="text-xs font-bold uppercase">SKU Count</p>
+        <p class="text-3xl font-black">${so.items.length}</p>
+      </div>
+
+      <div>
+        <p class="text-xs font-bold uppercase">Total Quantity</p>
+        <p class="text-3xl font-black">${so.qty}</p>
+      </div>
+    </div>
+  </div>
+`;
+
+
+boxEntries.forEach(([boxId, items], idx) => {
+  html += `
+  <div class="min-h-screen p-6 font-mono ${idx < totalBoxes - 1 ? 'page-break' : ''}">
+
+    <!-- HEADER -->
+    <div class="flex justify-between items-end gap-4 border-b-2 border-black pb-2 mb-4">
+      <p class="text-xl font-black uppercase">
+        Instamart Box Label
+      </p>
+      <p class="text-xl font-black text-right">
+        BOX ${idx + 1}/${totalBoxes}
+      </p>
+    </div>
+
+    <!-- PO / INVOICE -->
+    <div class="border-b-2 border-black pb-3 mb-4 space-y-3">
+      <div>
+        <p class="text-xs font-bold uppercase">PO Number</p>
+        <p class="text-xl font-black uppercase">${so.poReference}</p>
+      </div>
+
+      <div>
+        <p class="text-xs font-bold uppercase">Invoice No.</p>
+        <p class="text-xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p>
+      </div>
+    </div>
+
+    <!-- SKU DETAILS -->
+    <div class="space-y-4 mb-4">
+      ${items.map(item => `
+        <div class="space-y-2">
+          <div>
+            <p class="text-xs font-bold uppercase">SKU Name</p>
+            <p class="text-xl font-black uppercase">${item.productName}</p>
           </div>
 
-          <div class="space-y-6">
-            <div>
-              <p style="${styles.label}">PO Number</p>
-              <p style="${styles.valueLarge}">${so.poReference}</p>
-            </div>
-
-            <div>
-              <p style="${styles.label}">Invoice No.</p>
-              <p style="${styles.valueLarge}">${so.invoiceNumber || 'N/A'}</p>
-            </div>
+          <div>
+            <p class="text-xs font-bold uppercase">SKU Code</p>
+            <p class="text-xl font-black uppercase">${item.itemCode}</p>
           </div>
 
-          <div class="grid grid-cols-1 gap-4 pt-6 border-t-2 border-black">
-            <div class="flex justify-between items-end">
-              <p style="${styles.label}">Total Box Count</p>
-              <p style="${styles.valueXL}">${totalBoxes}</p>
-            </div>
+          <div>
+            <p class="text-xs font-bold uppercase">EAN Barcode</p>
+            <p class="text-xl font-black uppercase">${item.ean}</p>
+          </div>
 
-            <div class="flex justify-between items-end">
-              <p style="${styles.label}">SKU Count</p>
-              <p style="${styles.valueXL}">${so.items.length}</p>
-            </div>
-
-            <div class="flex justify-between items-end">
-              <p style="${styles.label}">Total Quantity</p>
-              <p style="${styles.valueXL}">${so.qty}</p>
-            </div>
+          <div>
+            <p class="text-xs font-bold uppercase">Quantity</p>
+            <p class="text-xl font-black">${item.quantity}</p>
           </div>
         </div>
-        `;
+      `).join('')}
+    </div>
 
-        boxEntries.forEach(([boxId, items], idx) => {
-          html += `
-          <div class="label-container ${idx < totalBoxes - 1 ? 'page-break' : ''}">
-            <h1 style="${styles.sectionTitle}" class="uppercase border-b-2 border-black pb-2 mb-6">
-              Instamart Box Label
-            </h1>
+    <!-- FOOTER -->
+    <div class="grid grid-cols-2 gap-4 border-t-2 border-black pt-4">
+      <div>
+        <p class="text-xs font-bold uppercase">Box ID</p>
+        <p class="text-lg font-bold">${boxId}</p>
+      </div>
 
-            <div class="space-y-4 mb-6">
-              <div>
-                <p style="${styles.label}">PO Number</p>
-                <p style="${styles.valueLarge}">${so.poReference}</p>
-              </div>
+      <div class="text-right">
+        <p class="text-xs font-bold uppercase">Packing Date</p>
+        <p class="text-lg font-bold">${packingDate}</p>
+      </div>
+    </div>
 
-              <div>
-                <p style="${styles.label}">Invoice No.</p>
-                <p style="${styles.valueLarge}">${so.invoiceNumber || 'N/A'}</p>
-              </div>
-            </div>
-
-            <div class="mb-4">
-
-              <table class="w-full item-table">
-                <tbody>
-                  ${(items as any[]).map(item => `
-                    <tr>
-                      <td style="padding: 4pt 0;">
-                        <p style="${styles.monoCode}">SKU NAME: ${item.productName}</p>
-                        <p style="${styles.monoCode}" class="uppercase">SKU CODE: ${item.itemCode}</p>
-                        <p style="${styles.monoCode}">EAN BARCODE: ${item.ean}</p>
-                        <p style="${styles.monoCode}">QUANTITY: ${item.quantity}</p>            
-                      </td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-
-            <div class="grid grid-cols-2 gap-4 pt-4 border-t-2 border-black">
-              <div>
-                <p style="${styles.label}">Box Count</p>
-                <p style="${styles.valueXL}">
-                  ${idx + 1} of ${totalBoxes}
-                </p>
-                <p style="font-size: 7pt; font-weight: 700; color: #9CA3AF;">
-                  ID: ${boxId}
-                </p>
-              </div>
-
-              <div class="text-right">
-                <p style="${styles.label}">Packing Date</p>
-                <p style="${styles.valueMedium}">${packingDate}</p>
-              </div>
-            </div>
-          </div>
-          `;
-        });
+  </div>
+  `;
+});
 
         html += `
                     <script>

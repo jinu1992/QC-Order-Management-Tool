@@ -80,6 +80,7 @@ interface OrderRowProps {
     isSyncingEE: boolean;
     onSyncEE: () => void;
     onTrackNotify: () => void;
+    onTrackNotifyDetails?: () => void;
     onCancel: () => void;
     isCancelling: boolean;
     onMarkThreshold: () => void;
@@ -102,6 +103,11 @@ const OrderRow: React.FC<OrderRowProps> = ({
     const poStatus = getCalculatedStatus(po);
     const amountIncTax = po.amount * 1.05;
     const items = po.items || [];
+    
+    // Calculate Fulfillable Quantity
+    const totalFulfillable = items.reduce((sum, item) => sum + (item.fulfillableQty || 0), 0);
+    const isShortage = totalFulfillable < po.qty;
+
     const selectableItems = items.filter(i => !i.eeOrderRefId && (i.itemStatus || '').toLowerCase() !== 'cancelled' && (i.fulfillableQty ?? 0) >= i.qty);
     const selectedCount = items.filter(i => isSelected(i.articleCode)).length;
     const effectiveDate = po.orderDate || 'N/A';
@@ -186,7 +192,16 @@ const OrderRow: React.FC<OrderRowProps> = ({
                 <td className="px-6 py-4"><StatusBadge status={poStatus} /></td>
                 <td className="px-6 py-4 font-medium text-gray-700">{po.channel}</td>
                 <td className="px-6 py-4 text-gray-500">{po.storeCode}</td>
-                <td className="px-6 py-4 font-bold text-gray-900">{po.qty} / ₹{amountIncTax.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                <td className="px-6 py-4">
+                    <div className="flex flex-col">
+                        <div className="flex items-center gap-1 font-bold">
+                            <span className={isShortage ? 'text-red-600' : 'text-emerald-600'} title="Total Fulfillable Quantity">{totalFulfillable}</span>
+                            <span className="text-gray-300 font-normal">/</span>
+                            <span className="text-gray-900" title="Total PO Quantity">{po.qty}</span>
+                        </div>
+                        <div className="text-[11px] font-bold text-gray-400">₹{amountIncTax.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+                    </div>
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-gray-400">{effectiveDate}</td>
                 <td className={`px-6 py-4 text-center sticky right-0 bg-white border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)] ${isMenuOpen ? 'z-50' : 'z-30'}`} onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-3 min-w-[200px]">
@@ -375,7 +390,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                                         </div>
                                                     </td>
                                                     <td className="py-4 text-right font-medium">{item.qty}</td>
-                                                    <td className={`py-4 text-right font-bold ${isFullyFulfillable ? 'text-green-600' : 'text-amber-600'}`}>{item.fulfillableQty ?? '0'}</td>
+                                                    <td className={`py-4 text-right font-bold ${isFullyFulfillable ? 'text-green-600' : 'text-red-600'}`}>{item.fulfillableQty ?? '0'}</td>
                                                     <td className="py-4 px-3 text-center">
                                                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${item.priceCheckStatus === 'Mismatch' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
                                                             {item.priceCheckStatus || 'OK'}
@@ -763,7 +778,7 @@ const PoTable: React.FC<PoTableProps> = ({
                                 )}
                             </th>
                             <th className="px-6 py-4">Store</th>
-                            <th className="px-6 py-4">Qty / Total</th>
+                            <th className="px-6 py-4">Fulfillable / Qty / Total</th>
                             <th className="px-6 py-4">PO Date</th>
                             <th className="px-6 py-4 text-center sticky right-0 bg-gray-50 z-30 border-l border-gray-100 min-w-[200px]">Action</th>
                         </tr>
