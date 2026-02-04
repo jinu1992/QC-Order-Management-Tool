@@ -108,6 +108,14 @@ const OrderRow: React.FC<OrderRowProps> = ({
     const totalFulfillable = items.reduce((sum, item) => sum + (item.fulfillableQty || 0), 0);
     const isShortage = totalFulfillable < po.qty;
 
+    // Logic: Show Fulfillable only for New POs and Partially Pushed POs
+    const showFulfillable = [
+        POStatus.NewPO,
+        POStatus.WaitingForConfirmation,
+        POStatus.ConfirmedToSend,
+        POStatus.PartiallyProcessed
+    ].includes(poStatus);
+
     const selectableItems = items.filter(i => !i.eeOrderRefId && (i.itemStatus || '').toLowerCase() !== 'cancelled' && (i.fulfillableQty ?? 0) >= i.qty);
     const selectedCount = items.filter(i => isSelected(i.articleCode)).length;
     const effectiveDate = po.orderDate || 'N/A';
@@ -195,8 +203,12 @@ const OrderRow: React.FC<OrderRowProps> = ({
                 <td className="px-6 py-4">
                     <div className="flex flex-col">
                         <div className="flex items-center gap-1 font-bold">
-                            <span className={isShortage ? 'text-red-600' : 'text-emerald-600'} title="Total Fulfillable Quantity">{totalFulfillable}</span>
-                            <span className="text-gray-300 font-normal">/</span>
+                            {showFulfillable && (
+                                <>
+                                    <span className={isShortage ? 'text-red-600' : 'text-emerald-600'} title="Total Fulfillable Quantity">{totalFulfillable}</span>
+                                    <span className="text-gray-300 font-normal">/</span>
+                                </>
+                            )}
                             <span className="text-gray-900" title="Total PO Quantity">{po.qty}</span>
                         </div>
                         <div className="text-[11px] font-bold text-gray-400">₹{amountIncTax.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
