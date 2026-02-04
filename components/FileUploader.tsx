@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { User, UploadMetadata } from '../types';
 import { 
@@ -142,17 +141,17 @@ const FileUploader: React.FC<FileUploaderProps> = ({ currentUser, addLog, addNot
                     const base64Data = e.target?.result?.toString().split(',')[1];
                     const res = await logFileUpload(selectedFunction, currentUser.email, base64Data, file.name);
                     
-                    if (res.status === 'success') {
+                    if (res && res.status === 'success') {
                         addLog('File Upload', `Successfully uploaded ${file.name} for ${selectedFunction}`);
-                        addNotification(`File "${file.name}" processed successfully by backend.`, 'success');
+                        addNotification(res.message || `File "${file.name}" processed successfully.`, 'success');
                         setPendingFile(null);
                         setIsModalOpen(false);
                         loadMetadata();
                     } else {
-                        triggerError('Server Processing Error', res.message || 'The server encountered an error while processing the file data.');
+                        triggerError('Server Processing Error', res?.message || 'The server encountered an error while processing the file data.');
                     }
-                } catch (err) {
-                    triggerError('Network Error', 'Failed to communicate with the processing server. Please check your connection.');
+                } catch (err: any) {
+                    triggerError('Upload Failed', err.message || 'Failed to communicate with the processing server.');
                 } finally {
                     setIsUploading(false);
                 }

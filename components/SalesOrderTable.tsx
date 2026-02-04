@@ -1,4 +1,3 @@
-
 import React, { useState, Fragment, useMemo, FC, useRef, useEffect } from 'react';
 import { type PurchaseOrder, type InventoryItem, POItem } from '../types';
 import { 
@@ -771,12 +770,12 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         try {
             const res = await syncEasyEcomShipments();
             if (res.status === 'success') {
-                addNotification('EasyEcom sync successful. Updating sheet data...', 'success');
+                addNotification(res.message || 'EasyEcom sync successful.', 'success');
                 addLog('EasyEcom Sync', 'Manual shipment fetch triggered.');
                 // Refresh local data from sheet
                 onSync();
             } else {
-                addNotification('Sync Failed: ' + res.message, 'error');
+                addNotification('Sync Failed: ' + (res.message || 'Unknown error'), 'error');
             }
         } catch (e) {
             addNotification('Network error during sync.', 'error');
@@ -796,7 +795,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         try {
             const res = await createZohoInvoice(eeRef);
             if (res.status === 'success') {
-                addNotification(res.message || 'Invoice triggered.', 'success');
+                addNotification(res.message || 'Invoice triggered successfully.', 'success');
                 addLog('Invoice Creation', `EE Ref: ${eeRef}`);
                 
                 // Immediate local state update to "Processing" to show feedback
@@ -816,10 +815,10 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 // Follow up with targeted refresh
                 await refreshSingleSOState(poRef);
             } else {
-                addNotification('Error: ' + res.message, 'error');
+                addNotification('Error: ' + (res.message || 'Failed to trigger invoice generation.'), 'error');
             }
         } catch (e) {
-            addNotification('Network error.', 'error');
+            addNotification('Network error during invoice creation.', 'error');
         } finally {
             setIsCreatingInvoice(null);
         }
@@ -834,20 +833,20 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             // Step 1: Update FBA ID in Sheet
             const updateRes = await updateFBAShipmentId(so.poReference, fbaId);
             if (updateRes.status !== 'success') {
-                throw new Error("Failed to save FBA ID: " + updateRes.message);
+                throw new Error(updateRes.message || "Failed to save FBA ID.");
             }
 
             // Step 2: Proceed with Zoho Invoice
             const res = await createZohoInvoice(so.id);
             if (res.status === 'success') {
-                addNotification('FBA ID Saved & Invoice triggered.', 'success');
+                addNotification(res.message || 'FBA ID Saved & Invoice triggered.', 'success');
                 addLog('Amazon FBA Invoice', `FBA ID: ${fbaId}, Ref: ${so.id}`);
                 
                 // Refresh data
                 await refreshSingleSOState(so.poReference);
                 setFbaShipmentModal({ isOpen: false, so: null });
             } else {
-                addNotification('Zoho Error: ' + res.message, 'error');
+                addNotification('Zoho Error: ' + (res.message || 'Unknown invoice error'), 'error');
             }
         } catch (e: any) {
             addNotification(e.message || 'Workflow failed.', 'error');
@@ -877,16 +876,16 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         return po;
                     }));
                 }
-                addNotification(res.message || 'Pushed to Nimbus.', 'success');
+                addNotification(res.message || 'Pushed to Nimbus successfully.', 'success');
                 addLog('Nimbus Shipping', `EE Ref: ${eeRef}`);
                 
                 // Follow up with targeted refresh to get full tracking details
                 await refreshSingleSOState(poRef);
             } else {
-                addNotification('Shipping Error: ' + res.message, 'error');
+                addNotification('Shipping Error: ' + (res.message || 'Failed to push to Nimbus.'), 'error');
             }
         } catch (e) {
-            addNotification('Network error.', 'error');
+            addNotification('Network error while shipping.', 'error');
         } finally {
             setIsPushingNimbus(null);
         }
