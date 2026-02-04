@@ -276,7 +276,6 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
   </div>
 `;
 
-
 boxEntries.forEach(([boxId, items], idx) => {
   html += `
   <div class="min-h-screen p-6 font-mono ${idx < totalBoxes - 1 ? 'page-break' : ''}">
@@ -347,7 +346,6 @@ boxEntries.forEach(([boxId, items], idx) => {
   </div>
   `;
 });
-
 
         html += `
                     <script>
