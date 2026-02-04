@@ -2,21 +2,18 @@ import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePoc
 
 /**
  * !!! IMPORTANT !!!
- * YOU MUST REPLACE THIS URL WITH YOUR OWN DEPLOYED WEB APP URL FROM GOOGLE APPS SCRIPT
- * 1. Open your GAS Editor
- * 2. Click "Deploy" -> "New Deployment"
- * 3. Select "Web App"
- * 4. Execute as: "Me" | Who has access: "Anyone"
- * 5. Copy the "Web app URL" and paste it here.
+ * YOUR CURRENT API URL:
  */
 const API_URL = 'https://script.google.com/macros/s/AKfycbwBDSNnN_xKlZc4cTwwKthd7-Nq8IE83csNdNHODP55EnVEz-gfWzcvzYdxGeNbJSPzZQ/exec'; 
 
 /**
  * Shared helper for POST requests to Google Apps Script.
+ * We avoid setting 'Content-Type' to 'application/json' to prevent CORS preflight.
+ * Google Apps Script can still parse the body as long as it is valid JSON.
  */
 const postToScript = async (payload: any) => {
-    if (!API_URL || API_URL.includes('macros/s/template-id')) {
-        throw new Error("Backend API URL is not configured. Please update services/api.ts");
+    if (!API_URL || API_URL.includes('template-id')) {
+        throw new Error("Backend API URL is not configured.");
     }
     
     console.log(`[API-OUT] ${payload.action}:`, payload);
@@ -24,39 +21,22 @@ const postToScript = async (payload: any) => {
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
-            mode: 'cors',
-            redirect: 'follow',
             body: JSON.stringify(payload),
-            headers: {
-                // Do not set Content-Type to application/json for GAS POST 
-                // It triggers a complex CORS preflight that GAS doesn't handle well.
-                // GAS prefers the payload as the raw body.
-            }
+            // Important: Do NOT set headers like Content-Type: application/json here.
+            // Leaving it out makes it a "simple request" and avoids CORS preflight failures.
         });
         
-        const contentType = response.headers.get("content-type");
-        
         if (!response.ok) {
-            throw new Error(`Server Error: ${response.status} ${response.statusText}`);
+            throw new Error(`Server Error: ${response.status}`);
         }
 
-        // If GAS returns HTML instead of JSON, it usually means a redirect to a login page or a script error
-        if (contentType && contentType.includes("text/html")) {
-            const text = await response.text();
-            console.error("[API-ERROR] Received HTML instead of JSON. Full response:", text);
-            throw new Error("Backend returned HTML instead of JSON. Is your script deployed to 'Anyone'?");
-        }
-        
         const result = await response.json();
         console.log(`[API-IN] ${payload.action} Result:`, result);
         return result;
     } catch (error: any) {
         console.error("[API-CRITICAL] Network/Script Failure:", error);
-        // Provide more descriptive errors for the UI
-        if (error.message.includes('fetch')) {
-            throw new Error("Network error: Cannot reach the backend. Check your Internet and API_URL.");
-        }
-        throw error;
+        // If the script is not deployed as "Anyone", fetch will fail with a CORS error.
+        throw new Error("Cannot reach backend. Ensure GAS is deployed as 'Anyone' and the URL is correct.");
     }
 };
 
@@ -70,11 +50,10 @@ export const loginWithGoogle = async (credentialToken: string): Promise<{status:
 export const fetchPackingData = async (referenceCode: string): Promise<any[]> => {
     try {
         const url = `${API_URL}?action=getPackingData&referenceCode=${encodeURIComponent(referenceCode)}`;
-        const response = await fetch(url, { method: 'GET', redirect: 'follow', mode: 'cors' });
+        const response = await fetch(url, { method: 'GET', redirect: 'follow' });
         const json = await response.json();
         return json.status === 'success' ? json.data : [];
     } catch (error) {
-        console.error("Failed to fetch packing data", error);
         return [];
     }
 };
@@ -113,7 +92,7 @@ export const updateFBAShipmentId = async (poNumber: string, fbaShipmentId: strin
 
 export const fetchUploadMetadata = async (): Promise<UploadMetadata[]> => {
     try {
-        const response = await fetch(`${API_URL}?action=getUploadMetadata`, { method: 'GET', redirect: 'follow', mode: 'cors' });
+        const response = await fetch(`${API_URL}?action=getUploadMetadata`, { method: 'GET', redirect: 'follow' });
         const json = await response.json();
         return json.status === 'success' ? json.data : [];
     } catch (error) {
@@ -121,17 +100,9 @@ export const fetchUploadMetadata = async (): Promise<UploadMetadata[]> => {
     }
 };
 
-export const loginUser = async (email: string, password: string): Promise<{status: string, message?: string, user?: User}> => {
-    return await postToScript({ action: 'login', email, password });
-};
-
-export const resetUserPassword = async (userId: string) => {
-    return await postToScript({ action: 'resetPassword', userId });
-};
-
 export const fetchUsers = async (): Promise<User[]> => {
     try {
-        const response = await fetch(`${API_URL}?action=getUsers`, { method: 'GET', redirect: 'follow', mode: 'cors' });
+        const response = await fetch(`${API_URL}?action=getUsers`, { method: 'GET', redirect: 'follow' });
         const json = await response.json();
         if (json.status === 'success' && Array.isArray(json.data)) {
             return json.data.map((row: any, index: number) => ({
@@ -160,7 +131,7 @@ export const deleteUserFromSheet = async (userId: string) => {
 
 export const fetchInventoryFromSheet = async (): Promise<InventoryItem[]> => {
     try {
-        const response = await fetch(`${API_URL}?action=getInventory`, { method: 'GET', redirect: 'follow', mode: 'cors' });
+        const response = await fetch(`${API_URL}?action=getInventory`, { method: 'GET', redirect: 'follow' });
         const json = await response.json();
         if (json.status === 'success') return transformSheetDataToInventory(json.data);
         return [];
@@ -177,7 +148,7 @@ export const fetchPurchaseOrders = async (poNumber?: string): Promise<PurchaseOr
             ? `${API_URL}?action=getPurchaseOrders&poNumber=${encodeURIComponent(poNumber)}`
             : `${API_URL}?action=getPurchaseOrders`;
             
-        const response = await fetch(url, { method: 'GET', redirect: 'follow', mode: 'cors' });
+        const response = await fetch(url, { method: 'GET', redirect: 'follow' });
         const json = await response.json();
         if (json.status === 'success' && Array.isArray(json.data)) return transformSheetDataToPOs(json.data);
         return [];
@@ -191,7 +162,7 @@ export const fetchPurchaseOrder = async (poNumber: string): Promise<PurchaseOrde
 
 export const fetchStorePocMappings = async (): Promise<StorePocMapping[]> => {
     try {
-        const response = await fetch(`${API_URL}?action=getStorePocMappings`, { method: 'GET', redirect: 'follow', mode: 'cors' });
+        const response = await fetch(`${API_URL}?action=getStorePocMappings`, { method: 'GET', redirect: 'follow' });
         const json = await response.json();
         return json.status === 'success' ? json.data : [];
     } catch (error) { return []; }
@@ -211,7 +182,7 @@ export const sendAppointmentEmail = async (params: {
 
 export const fetchChannelConfigs = async (): Promise<ChannelConfig[]> => {
     try {
-        const response = await fetch(`${API_URL}?action=getChannelConfigs`, { method: 'GET', redirect: 'follow', mode: 'cors' });
+        const response = await fetch(`${API_URL}?action=getChannelConfigs`, { method: 'GET', redirect: 'follow' });
         const json = await response.json();
         if (json.status === 'success' && Array.isArray(json.data)) return transformSheetDataToChannelConfigs(json.data);
         return [];
@@ -220,7 +191,7 @@ export const fetchChannelConfigs = async (): Promise<ChannelConfig[]> => {
 
 export const fetchSystemConfig = async (): Promise<any> => {
     try {
-        const response = await fetch(`${API_URL}?action=getSystemConfig`, { method: 'GET', redirect: 'follow', mode: 'cors' });
+        const response = await fetch(`${API_URL}?action=getSystemConfig`, { method: 'GET', redirect: 'follow' });
         const json = await response.json();
         return json.status === 'success' ? json.data : {};
     } catch (error) { return {}; }
@@ -418,10 +389,6 @@ export const saveSystemConfig = async (config: any) => {
     return await postToScript({ action: 'saveSystemConfig', ...config });
 };
 
-export const createEasyEcomCustomer = async (details: any) => {
-    return await postToScript({ action: 'createEasyEcomCustomer', ...details });
-};
-
 export const syncZohoContacts = async () => {
     return await postToScript({ action: 'syncZohoContacts' });
 };
@@ -450,16 +417,11 @@ export const updatePOStatus = async (poNumber: string, status: string) => {
 };
 
 export const cancelPOLineItem = async (poNumber: string, articleCode: string) => {
-    console.log(`[API] Triggering cancelPOLineItem for PO: ${poNumber}, SKU: ${articleCode}`);
     return await postToScript({ 
         action: 'cancelLineItem', 
         poNumber: String(poNumber).trim(),
         articleCode: String(articleCode).trim()
     });
-};
-
-export const cancelPurchaseOrder = async (poNumber: string) => {
-    return updatePOStatus(poNumber, 'Cancelled');
 };
 
 export const pushToEasyEcom = async (po: PurchaseOrder, selectedArticleCodes: string[]) => {
