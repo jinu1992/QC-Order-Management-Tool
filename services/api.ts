@@ -411,6 +411,11 @@ export const syncSinglePO = async (poNumber: string) => {
     return await response.json();
 };
 
+export const syncEasyEcomShipments = async () => {
+    const response = await postToScript({ action: 'fetchEasyEcomShipments' });
+    return await response.json();
+};
+
 export const requestZohoSync = async (contactId: string) => {
     const response = await postToScript({ 
         action: 'syncZohoContactToEasyEcom', 

@@ -28,7 +28,7 @@ import {
     PrinterIcon,
     AlertIcon
 } from './icons/Icons';
-import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO, fetchPackingData, updateFBAShipmentId } from '../services/api';
+import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO, fetchPackingData, updateFBAShipmentId, syncEasyEcomShipments } from '../services/api';
 
 interface SalesOrderTableProps {
     activeFilter: string;
@@ -200,6 +200,38 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
 
         const packingDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
+        let html = `
+            <html>
+                <head>
+                    <title>Instamart Labels - ${so.id}</title>
+                    <script src="https://cdn.tailwindcss.com"></script>
+                    <style>
+                        @media print {
+                            @page { size: 4in 6in; margin: 0; }
+                            body { margin: 0; -webkit-print-color-adjust: exact; color: black; }
+                            .page-break { page-break-after: always; }
+                        }
+                        .label-container {
+                            width: 4in;
+                            height: 6in;
+                            padding: 0.25in;
+                            box-sizing: border-box;
+                            display: flex;
+                            flex-direction: column;
+                            background: white;
+                            font-family: sans-serif;
+                            color: black;
+                        }
+                        .item-table th, .item-table td {
+                            text-align: left;
+                            padding: 3pt 0;
+                            border-bottom: 0.5pt solid #ddd;
+                        }
+                    </style>
+                </head>
+                <body>
+        `;
+
         html += `
   <div class="min-h-screen p-6 font-mono page-break">
 
@@ -316,6 +348,7 @@ boxEntries.forEach(([boxId, items], idx) => {
   `;
 });
 
+
         html += `
                     <script>
                         window.onload = function() { 
@@ -334,6 +367,10 @@ boxEntries.forEach(([boxId, items], idx) => {
         printWindow.document.write(html);
         printWindow.document.close();
     };
+
+
+  
+
 
     return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[120] p-4">
@@ -487,7 +524,6 @@ const CopyField = ({ label, value, icon }: { label: string, value: string, icon:
     );
 };
 
-/* Fix: Redeclaration error fixed by maintaining only one definition of PortalHelperModal. */
 const PortalHelperModal: FC<{ so: GroupedSalesOrder, onClose: () => void }> = ({ so, onClose }) => {
     const isZepto = so.channel.toLowerCase().includes('zepto');
     const portalName = isZepto ? 'Zepto Brands' : 'Blinkit Partners';
@@ -552,6 +588,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     const [isCreatingInvoice, setIsCreatingInvoice] = useState<string | null>(null);
     const [isPushingNimbus, setIsPushingNimbus] = useState<string | null>(null);
     const [isRefreshingSo, setIsRefreshingSo] = useState<string | null>(null);
+    const [isSyncingEE, setIsSyncingEE] = useState(false);
     const [portalHelper, setPortalHelper] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     const [instamartPrintPackModal, setInstamartPrintPackModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     const [shippingConfirm, setShippingConfirm] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
@@ -728,6 +765,26 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             }
         }
         setIsRefreshingSo(null);
+    };
+
+    const handleEESync = async () => {
+        setIsSyncingEE(true);
+        addNotification('Triggering EasyEcom API sync...', 'info');
+        try {
+            const res = await syncEasyEcomShipments();
+            if (res.status === 'success') {
+                addNotification('EasyEcom sync successful. Updating sheet data...', 'success');
+                addLog('EasyEcom Sync', 'Manual shipment fetch triggered.');
+                // Refresh local data from sheet
+                onSync();
+            } else {
+                addNotification('Sync Failed: ' + res.message, 'error');
+            }
+        } catch (e) {
+            addNotification('Network error during sync.', 'error');
+        } finally {
+            setIsSyncingEE(false);
+        }
     };
 
     const handleCreateZohoInvoiceAction = async (eeRef: string, poRef: string, soObj?: GroupedSalesOrder) => {
@@ -923,7 +980,19 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         <button key={tab.id} onClick={() => setActiveFilter(tab.id)} className={`px-3 py-1.5 text-sm font-semibold rounded-full border transition-all ${activeFilter === tab.id ? 'bg-partners-green text-white border-partners-green shadow-sm' : 'bg-white text-gray-600 border-partners-border hover:bg-gray-50'}`}>{tab.name} <span className="ml-1 text-[10px] opacity-70">({salesTabCounts[tab.id] || 0})</span></button>
                     ))}
                 </div>
-                <button onClick={onSync} disabled={isSyncing} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 transition-all"><CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} /> Sync All Data</button>
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={handleEESync} 
+                        disabled={isSyncingEE || isSyncing} 
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-purple-600 rounded-lg shadow-sm hover:bg-purple-700 transition-all active:scale-95 disabled:opacity-50"
+                    >
+                        <RefreshIcon className={`h-4 w-4 ${isSyncingEE ? 'animate-spin' : ''}`} /> 
+                        {isSyncingEE ? 'Syncing EasyEcom...' : 'Sync EasyEcom'}
+                    </button>
+                    <button onClick={onSync} disabled={isSyncing || isSyncingEE} className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50">
+                        <CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} /> Refresh Data
+                    </button>
+                </div>
             </div>
 
             <div className="mt-6 overflow-x-auto border border-gray-100 rounded-xl shadow-inner max-h-[70vh]">

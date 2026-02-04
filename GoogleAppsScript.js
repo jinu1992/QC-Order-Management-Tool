@@ -137,6 +137,7 @@ function doPost(e) {
     if (action === 'syncZohoContacts') return handleSyncZohoContacts();
     if (action === 'syncZohoContactToEasyEcom') return handleSyncZohoContactToEasyEcom(data.contactId);
     if (action === 'syncSinglePO') return handleSyncSinglePO(data.poNumber);
+    if (action === 'fetchEasyEcomShipments') return handleSyncEasyEcomShipments();
     if (action === 'updatePOStatus') return updatePOStatus(data.poNumber, data.status);
     if (action === 'syncInventory') return handleSyncInventory();
     if (action === 'cancelLineItem') return handleCancelLineItem(data.poNumber, data.articleCode);
@@ -145,6 +146,19 @@ function doPost(e) {
     return responseJSON({status: 'error', message: 'Invalid action: ' + action});
   } catch (error) {
     return responseJSON({status: 'error', message: "doPost Error: " + error.toString()});
+  }
+}
+
+function handleSyncEasyEcomShipments() {
+  try {
+    if (typeof fetchEasyEcomShipments === 'function') {
+      fetchEasyEcomShipments();
+      return responseJSON({ status: 'success', message: 'EasyEcom shipments fetch triggered successfully.' });
+    } else {
+      return responseJSON({ status: 'error', message: 'fetchEasyEcomShipments function not found in GAS backend.' });
+    }
+  } catch (e) {
+    return responseJSON({ status: 'error', message: e.toString() });
   }
 }
 
