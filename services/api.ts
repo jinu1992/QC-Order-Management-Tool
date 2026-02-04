@@ -1,4 +1,3 @@
-
 import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePocMapping, User, UploadMetadata } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbwBDSNnN_xKlZc4cTwwKthd7-Nq8IE83csNdNHODP55EnVEz-gfWzcvzYdxGeNbJSPzZQ/exec'; 
@@ -29,6 +28,14 @@ const postToScript = async (payload: any) => {
         console.error("[API] Network/Script Failure:", error);
         throw error;
     }
+};
+
+export const loginWithGoogle = async (credentialToken: string): Promise<{status: string, message?: string, user?: User}> => {
+    const response = await postToScript({ 
+        action: 'loginGoogle', 
+        idToken: credentialToken 
+    });
+    return await response.json();
 };
 
 export const fetchPackingData = async (referenceCode: string): Promise<any[]> => {
@@ -456,9 +463,6 @@ export const pushToEasyEcom = async (po: PurchaseOrder, selectedArticleCodes: st
         }));
     
     const isPartial = (po.items || []).length > itemsToSend.length;
-    
-    // Spread all PO details to ensure all columns are available in the payload,
-    // excluding the raw items and the local ID which are handled separately.
     const { items: _, id: __, ...poMetadata } = po;
 
     const response = await postToScript({

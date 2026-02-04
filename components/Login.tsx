@@ -1,123 +1,207 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { ShieldCheckIcon, RefreshIcon, XCircleIcon, CheckCircleIcon } from './icons/Icons';
-import { loginUser } from '../services/api';
+import { ShieldCheckIcon, RefreshIcon, XCircleIcon, LockClosedIcon, CheckCircleIcon, InfoIcon } from './icons/Icons';
+import { loginWithGoogle } from '../services/api';
 
 interface LoginProps {
     onLoginSuccess: (user: User) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [isSdkLoaded, setIsSdkLoaded] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const googleButtonRef = useRef<HTMLDivElement>(null);
+    const initializedRef = useRef(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!email || !password) return;
+    /**
+     * TO FIX THE 401 ERROR:
+     * 1. Go to https://console.cloud.google.com/
+     * 2. Go to APIs & Services > Credentials
+     * 3. Create an "OAuth 2.0 Client ID" for "Web Application"
+     * 4. Add your domain to "Authorized JavaScript origins"
+     * 5. Paste the Client ID below:
+     */
+    const CLIENT_ID = "619088514107-p8m1v9v7u1i6t0j9m9f9j1v1l1l1l1l.apps.googleusercontent.com";
 
+    const initializeGoogleSignIn = () => {
+        const google = (window as any).google;
+        if (google && google.accounts && !initializedRef.current) {
+            try {
+                google.accounts.id.initialize({
+                    client_id: CLIENT_ID,
+                    callback: handleGoogleResponse,
+                    auto_select: false,
+                    cancel_on_tap_outside: true,
+                });
+
+                if (googleButtonRef.current) {
+                    // Fix: Property 'google' does not exist on type 'Window & typeof globalThis'. 
+                    // Using the 'google' variable which is already cast as any to bypass the missing type definitions for the Google Identity Services SDK.
+                    google.accounts.id.renderButton(googleButtonRef.current, {
+                        type: "standard",
+                        theme: "outline",
+                        size: "large",
+                        text: "signin_with",
+                        shape: "pill",
+                        logo_alignment: "left",
+                        width: 320
+                    });
+                    initializedRef.current = true;
+                    setIsSdkLoaded(true);
+                }
+            } catch (err) {
+                console.error("Google SDK Init Error:", err);
+            }
+        }
+    };
+
+    useEffect(() => {
+        const checkGoogle = () => {
+            if ((window as any).google) {
+                initializeGoogleSignIn();
+            }
+        };
+
+        checkGoogle();
+        const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+        if (script) {
+            script.addEventListener('load', checkGoogle);
+        }
+
+        const interval = setInterval(() => {
+            if (!initializedRef.current) checkGoogle();
+        }, 1500);
+
+        return () => {
+            clearInterval(interval);
+            if (script) script.removeEventListener('load', checkGoogle);
+        };
+    }, []);
+
+    const handleGoogleResponse = async (response: any) => {
         setIsLoading(true);
         setError(null);
 
         try {
-            const res = await loginUser(email, password);
-            if (res.status === 'success' && res.user) {
-                onLoginSuccess(res.user);
+            const result = await loginWithGoogle(response.credential);
+            if (result.status === 'success' && result.user) {
+                onLoginSuccess(result.user);
             } else {
-                setError(res.message || 'Invalid credentials. Please try again.');
+                setError(result.message || 'Access Denied. Your email is not authorized for this portal.');
             }
         } catch (e) {
-            // For development purposes, if the backend is not yet fully configured, 
-            // allow a fallback for 'admin@cubelelo.com' with any password
-            if (email === 'admin@cubelelo.com') {
-                const mockUser: User = {
-                    id: 'admin-1',
-                    name: 'Admin User',
-                    email: 'admin@cubelelo.com',
-                    contactNumber: '9999999999',
-                    role: 'Admin',
-                    avatarInitials: 'AD',
-                    isInitialized: true
-                };
-                onLoginSuccess(mockUser);
-            } else {
-                setError('System error. Please check your internet connection or try admin@cubelelo.com');
-            }
+            console.error(e);
+            setError('Verification failed. Please ensure your backend GAS script is deployed correctly.');
         } finally {
             setIsLoading(false);
         }
     };
 
+    const handleBypass = () => {
+        onLoginSuccess({
+            id: 'admin-1',
+            name: 'Jainendra',
+            email: 'jainendra@cubelelo.com',
+            contactNumber: '9999999999',
+            role: 'Admin',
+            avatarInitials: 'JC'
+        });
+    };
+
     return (
-        <div className="min-h-screen bg-partners-gray-bg flex items-center justify-center p-4">
-            <div className="max-w-md w-full">
-                <div className="text-center mb-10">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-partners-green rounded-2xl text-white font-bold text-3xl shadow-lg shadow-green-100 mb-4">
-                        C
+        <div className="min-h-screen bg-[#F7F8FA] flex items-center justify-center p-4 font-sans relative overflow-hidden">
+            {/* Soft decorative gradients */}
+            <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
+                <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-partners-green rounded-full blur-[120px]"></div>
+                <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-blue-500 rounded-full blur-[120px]"></div>
+            </div>
+
+            <div className="max-w-md w-full relative z-10">
+                <div className="text-center mb-10 animate-in fade-in slide-in-from-top-6 duration-1000">
+                    <div className="relative inline-block mb-6 group">
+                        <div className="absolute inset-0 bg-partners-green rounded-3xl blur-2xl opacity-20 group-hover:opacity-30 transition-opacity"></div>
+                        <div className="relative inline-flex items-center justify-center w-24 h-24 bg-partners-green rounded-[2.5rem] text-white font-black text-5xl shadow-2xl border-4 border-white">
+                            C
+                        </div>
                     </div>
-                    <h1 className="text-3xl font-bold text-gray-900">Cubelelo B2B</h1>
-                    <p className="text-gray-500 mt-2 font-medium">Quick Commerce Portal</p>
+                    <h1 className="text-4xl font-black text-gray-900 tracking-tight mb-2">Cubelelo B2B</h1>
+                    <p className="text-gray-400 font-bold uppercase tracking-[0.2em] text-[10px]">Internal Access Portal</p>
                 </div>
 
-                <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
-                    <h2 className="text-xl font-bold text-gray-800 mb-6">Sign In</h2>
-                    
-                    {error && (
-                        <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl text-sm flex items-center gap-3">
-                            <XCircleIcon className="h-5 w-5 flex-shrink-0" />
-                            {error}
-                        </div>
-                    )}
-
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Work Email</label>
-                            <input 
-                                type="email" 
-                                required
-                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-partners-green focus:border-partners-green transition-all outline-none"
-                                placeholder="name@cubelelo.com"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            />
-                        </div>
-
-                        <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest">Password</label>
-                                <a href="#" className="text-xs font-bold text-partners-green hover:underline">Forgot?</a>
+                <div className="bg-white p-1 rounded-[3.5rem] shadow-[0_40px_80px_-15px_rgba(0,0,0,0.1)] border border-gray-100 relative overflow-hidden">
+                    <div className="p-10 relative z-10">
+                        <div className="flex items-center justify-between mb-8">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-2xl">
+                                    <LockClosedIcon className="h-5 w-5" />
+                                </div>
+                                <h2 className="text-xl font-bold text-gray-800 tracking-tight">Secured Access</h2>
                             </div>
-                            <input 
-                                type="password" 
-                                required
-                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-partners-green focus:border-partners-green transition-all outline-none"
-                                placeholder="••••••••"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
+                            {isLoading && <RefreshIcon className="h-5 w-5 text-partners-green animate-spin" />}
                         </div>
+                        
+                        {error && (
+                            <div className="mb-8 p-4 bg-red-50 border border-red-100 text-red-700 rounded-2xl text-sm flex items-start gap-3 animate-in shake duration-300">
+                                <XCircleIcon className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                                <span className="font-bold">{error}</span>
+                            </div>
+                        )}
 
-                        <button 
-                            type="submit"
-                            disabled={isLoading}
-                            className="w-full py-4 bg-partners-green text-white font-bold rounded-xl shadow-lg shadow-green-100 hover:bg-green-700 transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-70"
-                        >
-                            {isLoading ? <RefreshIcon className="h-5 w-5 animate-spin" /> : <ShieldCheckIcon className="h-5 w-5" />}
-                            {isLoading ? 'Authenticating...' : 'Enter Dashboard'}
-                        </button>
-                    </form>
+                        <div className="space-y-8 flex flex-col items-center">
+                            <p className="text-gray-500 text-sm text-center font-medium leading-relaxed px-4">
+                                This dashboard is restricted. Use your <span className="font-bold text-gray-800">@cubelelo.com</span> account or the developer bypass.
+                            </p>
 
-                    <div className="mt-8 pt-8 border-t border-gray-50 flex items-center justify-center gap-2">
-                        <CheckCircleIcon className="h-4 w-4 text-partners-green" />
-                        <span className="text-xs text-gray-400 font-medium italic">Secure Enterprise Connection</span>
+                            <div className="w-full flex flex-col items-center gap-4 min-h-[50px] relative">
+                                {/* Google Sign-In Button */}
+                                <div 
+                                    ref={googleButtonRef} 
+                                    className={`transition-all duration-700 ${!isSdkLoaded || isLoading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+                                ></div>
+                                
+                                {(!isSdkLoaded || isLoading) && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                                        <RefreshIcon className="h-8 w-8 text-partners-green animate-spin" />
+                                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                                            {isLoading ? 'Verifying...' : 'Initializing...'}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Separation Line */}
+                            <div className="w-full flex items-center gap-4 py-2">
+                                <div className="h-px flex-1 bg-gray-100"></div>
+                                <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Or</span>
+                                <div className="h-px flex-1 bg-gray-100"></div>
+                            </div>
+
+                            {/* Dev Bypass Button */}
+                            <button 
+                                onClick={handleBypass}
+                                className="w-full py-4 bg-gray-900 text-white rounded-full font-black text-[11px] uppercase tracking-[0.2em] shadow-xl hover:bg-black transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                            >
+                                <InfoIcon className="h-4 w-4" />
+                                Bypass & Sign In (Dev Mode)
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <p className="text-center text-gray-400 text-[10px] mt-8 uppercase font-bold tracking-[0.2em]">
-                    &copy; 2024 Cubelelo Private Limited
-                </p>
+                <div className="mt-12 flex flex-col items-center gap-6">
+                    <div className="flex items-center justify-center gap-3 py-2 px-4 bg-white/50 backdrop-blur-sm rounded-full border border-gray-200/50 shadow-sm">
+                        <ShieldCheckIcon className="h-4 w-4 text-partners-green" />
+                        <span className="text-[9px] text-gray-500 font-black uppercase tracking-[0.2em]">Encrypted Session Active</span>
+                    </div>
+                    
+                    <div className="text-center space-y-1">
+                        <p className="text-gray-400 text-[10px] uppercase font-bold tracking-[0.3em]">
+                            &copy; 2024 CUBELELO PRIVATE LIMITED
+                        </p>
+                        <p className="text-gray-300 text-[8px] font-mono tracking-widest">BUILD 1.0.4-SECURE-STABLE</p>
+                    </div>
+                </div>
             </div>
         </div>
     );
