@@ -20,12 +20,12 @@ function getSpreadsheet() {
 
 /**
  * Standard GAS JSON response helper.
- * CRITICAL: This should only be called by doGet and doPost.
+ * Note: Manual CORS headers (Access-Control-Allow-Origin) are NOT required here
+ * and can actually cause errors if set manually. Google handles CORS for you.
  */
 function responseJSON(obj) {
-  const output = JSON.stringify(obj || { status: 'success', message: 'Action completed' });
   return ContentService
-    .createTextOutput(output)
+    .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -60,10 +60,9 @@ function doPost(e) {
     // Log request for debugging
     debugLog(action || "UNKNOWN_ACTION", data);
 
-    // CRITICAL: All these functions MUST return a PLAIN OBJECT, NOT a responseJSON output.
     if (action === 'saveUser') result = saveUser(data);
     else if (action === 'deleteUser') result = deleteUser(data.userId);
-    else if (action === 'logFileUpload') result = handleLogFileUpload(data);
+    else if (action === 'logFileUpload') result = logFileUpload(data);
     else if (action === 'createItem') result = createInventoryItem(data);
     else if (action === 'updatePrice') result = updateInventoryPrice(data);
     else if (action === 'saveChannelConfig') result = saveChannelConfig(data);
@@ -80,111 +79,17 @@ function doPost(e) {
     else if (action === 'loginGoogle') result = handleGoogleLogin(data.idToken);
     else if (action === 'syncZohoContactToEasyEcom') {
       const ok = syncZohoContactToEasyEcom(data.contactId);
-      result = ok === true ? { status: 'success', message: 'Sync successful' } : { status: 'error', message: 'Sync failed' };
+      result = ok === true ? { status: 'success' } : { status: 'error', message: 'Sync failed' };
     }
     else {
       result = { status: 'error', message: 'Invalid action: ' + action };
     }
 
-    // Fallback if the handler function returned nothing
-    if (!result) {
-      result = { status: 'success', message: 'Process finished' };
-    }
-
   } catch (error) {
-    const errorMsg = (error && error.message) ? error.message : String(error);
-    result = { status: 'error', message: 'Backend Exception: ' + errorMsg };
+    result = { status: 'error', message: 'doPost Error: ' + error.message };
   }
 
-  // Convert to JSON exactly once
   return responseJSON(result);
-}
-
-/**
- * REFACTORED HANDLERS: These now return plain objects.
- */
-function handleCreateZohoInvoice(eeReferenceCode) {
-  try {
-    // Assuming createZohoInvoiceByReferenceCode is defined in your other script files
-    const result = createZohoInvoiceByReferenceCode(eeReferenceCode);
-    return result; 
-  } catch (e) {
-    return { status: 'error', message: "Zoho Error: " + e.toString() };
-  }
-}
-
-function handleLogFileUpload(data) {
-  try {
-    // Logic to record the upload in SHEET_UPLOAD_LOGS
-    const ss = getSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_UPLOAD_LOGS);
-    if (sheet) {
-      sheet.appendRow([
-        new Date(), 
-        data.functionId, 
-        data.userName, 
-        data.fileName || 'Unknown', 
-        'Success'
-      ]);
-    }
-    return { status: 'success', message: 'File upload logged and processed.' };
-  } catch (e) {
-    return { status: 'error', message: 'File log failed: ' + e.toString() };
-  }
-}
-
-function handlePushToNimbus(eeReferenceCode) {
-  try {
-    // Assuming pushOrderToNimbus exists
-    return pushOrderToNimbus(eeReferenceCode);
-  } catch (e) {
-    return { status: 'error', message: "Nimbus Error: " + e.toString() };
-  }
-}
-
-function handleSyncEasyEcomShipments() {
-  try {
-    // Assuming fetchAndStoreEasyEcomShipments exists
-    return fetchAndStoreEasyEcomShipments();
-  } catch (e) {
-    return { status: 'error', message: e.toString() };
-  }
-}
-
-function handleSyncInventory() {
-  try {
-    // Assuming updateMasterSkuInventory exists
-    return updateMasterSkuInventory();
-  } catch (e) {
-    return { status: 'error', message: e.toString() };
-  }
-}
-
-function handleSyncZohoContacts() {
-  try {
-    // Assuming syncZohoContactsToSheet exists
-    return syncZohoContactsToSheet();
-  } catch (e) {
-    return { status: 'error', message: e.toString() };
-  }
-}
-
-function handleCancelLineItem(poNumber, articleCode) {
-  try {
-    // Assuming cancelLineItemInSheet exists
-    return cancelLineItemInSheet(poNumber, articleCode);
-  } catch (e) {
-    return { status: 'error', message: e.toString() };
-  }
-}
-
-function handleUpdateFBAShipmentId(poNumber, fbaShipmentId) {
-  try {
-    // Assuming updateFBAShipmentIdInSheet exists
-    return updateFBAShipmentIdInSheet(poNumber, fbaShipmentId);
-  } catch (e) {
-    return { status: 'error', message: e.toString() };
-  }
 }
 
 function handleGoogleLogin(idToken) {
@@ -240,29 +145,24 @@ function handleGoogleLogin(idToken) {
 }
 
 function getPurchaseOrders(poNumberFilter) {
-  try {
-    const ss = getSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_PO_DB);
-    if (!sheet) return {status: 'error', message: `Sheet "${SHEET_PO_DB}" not found.`};
-    const rawData = sheet.getDataRange().getValues();
-    if (rawData.length <= 1) return {status: 'success', data: []};
-    const headers = rawData[0];
-    let poNumIdx = headers.indexOf("PO Number");
-    if (poNumIdx === -1) poNumIdx = headers.indexOf("PO_Number");
-    const data = [];
-    
-    for (let i = 1; i < rawData.length; i++) {
-      const row = rawData[i];
-      if (row.every(cell => cell === "")) continue;
-      if (poNumberFilter && poNumIdx !== -1 && String(row[poNumIdx]).trim() !== String(poNumberFilter).trim()) continue;
-      const obj = {};
-      for (let j = 0; j < headers.length; j++) { obj[headers[j]] = row[j]; }
-      data.push(obj);
-    }
-    return {status: 'success', data: data};
-  } catch (e) {
-    return {status: 'error', message: e.toString()};
+  const ss = getSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_PO_DB);
+  if (!sheet) return {status: 'error', message: `Sheet "${SHEET_PO_DB}" not found.`};
+  const rawData = sheet.getDataRange().getValues();
+  if (rawData.length <= 1) return {status: 'success', data: []};
+  const headers = rawData[0];
+  let poNumIdx = headers.indexOf("PO Number");
+  if (poNumIdx === -1) poNumIdx = headers.indexOf("PO_Number");
+  const data = [];
+  for (let i = 1; i < rawData.length; i++) {
+    const row = rawData[i];
+    if (row.every(cell => cell === "")) continue;
+    if (poNumberFilter && poNumIdx !== -1 && String(row[poNumIdx]).trim() !== String(poNumberFilter).trim()) continue;
+    const obj = {};
+    for (let j = 0; j < headers.length; j++) { obj[headers[j]] = row[j]; }
+    data.push(obj);
   }
+  return {status: 'success', data: data};
 }
 
 function getUploadMetadata() {
@@ -325,79 +225,49 @@ function debugLog(action, data) {
 }
 
 function saveUser(user) {
-  try {
-    const ss = getSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_USERS);
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const idIdx = headers.indexOf("ID");
-    
-    let rowIdx = -1;
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][idIdx]) === String(user.id)) {
-        rowIdx = i + 1;
-        break;
-      }
+  const ss = getSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_USERS);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idIdx = headers.indexOf("ID");
+  
+  let rowIdx = -1;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idIdx]) === String(user.id)) {
+      rowIdx = i + 1;
+      break;
     }
-
-    const rowValues = headers.map(h => {
-      if (h === "ID") return user.id;
-      if (h === "Name") return user.name;
-      if (h === "Email") return user.email;
-      if (h === "Contact") return user.contactNumber;
-      if (h === "Role") return user.role;
-      if (h === "Avatar") return user.avatarInitials;
-      if (h === "IsInitialized") return true;
-      return "";
-    });
-
-    if (rowIdx > -1) {
-      sheet.getRange(rowIdx, 1, 1, rowValues.length).setValues([rowValues]);
-    } else {
-      sheet.appendRow(rowValues);
-    }
-    return {status: 'success'};
-  } catch (e) {
-    return {status: 'error', message: e.toString()};
   }
+
+  const rowValues = headers.map(h => {
+    if (h === "ID") return user.id;
+    if (h === "Name") return user.name;
+    if (h === "Email") return user.email;
+    if (h === "Contact") return user.contactNumber;
+    if (h === "Role") return user.role;
+    if (h === "Avatar") return user.avatarInitials;
+    if (h === "IsInitialized") return true;
+    return "";
+  });
+
+  if (rowIdx > -1) {
+    sheet.getRange(rowIdx, 1, 1, rowValues.length).setValues([rowValues]);
+  } else {
+    sheet.appendRow(rowValues);
+  }
+  return {status: 'success'};
 }
 
 function deleteUser(userId) {
-  try {
-    const ss = getSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_USERS);
-    const data = sheet.getDataRange().getValues();
-    const idIdx = data[0].indexOf("ID");
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][idIdx]) === String(userId)) {
-        sheet.deleteRow(i + 1);
-        return {status: 'success'};
-      }
+  const ss = getSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_USERS);
+  const data = sheet.getDataRange().getValues();
+  const idIdx = data[0].indexOf("ID");
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idIdx]) === String(userId)) {
+      sheet.deleteRow(i + 1);
+      return {status: 'success'};
     }
-    return {status: 'error', message: 'User not found'};
-  } catch (e) {
-    return {status: 'error', message: e.toString()};
   }
-}
-
-function updatePOStatus(poNumber, status) {
-  try {
-    const ss = getSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_PO_DB);
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const poIdx = headers.indexOf("PO Number");
-    const statusIdx = headers.indexOf("Status");
-
-    let updatedCount = 0;
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][poIdx]) === String(poNumber)) {
-        sheet.getRange(i + 1, statusIdx + 1).setValue(status);
-        updatedCount++;
-      }
-    }
-    return { status: 'success', message: `Updated ${updatedCount} rows for PO ${poNumber}` };
-  } catch (e) {
-    return { status: 'error', message: e.toString() };
-  }
+  return {status: 'error'};
 }

@@ -8,6 +8,8 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbwBDSNnN_xKlZc4cTwwKthd
 
 /**
  * Shared helper for POST requests to Google Apps Script.
+ * We avoid setting 'Content-Type' to 'application/json' to prevent CORS preflight.
+ * Google Apps Script can still parse the body as long as it is valid JSON.
  */
 const postToScript = async (payload: any) => {
     if (!API_URL || API_URL.includes('template-id')) {
@@ -20,45 +22,39 @@ const postToScript = async (payload: any) => {
         const response = await fetch(API_URL, {
             method: 'POST',
             body: JSON.stringify(payload),
-            // Redirect follow is required for GAS
-            redirect: 'follow'
+            // Important: Do NOT set headers like Content-Type: application/json here.
+            // Leaving it out makes it a "simple request" and avoids CORS preflight failures.
         });
         
         if (!response.ok) {
-            throw new Error(`Network Error: ${response.status}`);
+            throw new Error(`Network Error: Server returned ${response.status}`);
         }
 
         const text = await response.text();
-        if (!text || text.trim() === "") {
-            return { status: 'success', message: 'Action completed (Empty response).' };
-        }
-
         let result: any;
+        
         try {
             result = JSON.parse(text);
         } catch (e) {
-            console.warn("[API-WARN] Malformed JSON received:", text);
-            // Fallback for non-JSON success responses from GAS
+            console.error("[API-ERROR] Failed to parse JSON response:", text);
+            // If the backend returned a string instead of JSON, but the request was successful
             if (text.toLowerCase().includes('success') || text.toLowerCase().includes('ok')) {
                 return { status: 'success', message: 'Action completed successfully.' };
             }
-            throw new Error("Invalid response format from server.");
+            throw new Error("Invalid server response format. Check backend logs.");
         }
 
-        // Standardize result structure
-        const status = (result.status || 'success').toLowerCase();
-        const message = result.message || result.error || (status === 'success' ? 'Operation completed.' : 'An unknown error occurred.');
-
+        // Normalize response to ensure status and message exist
         const normalizedResult = {
-            ...result,
-            status,
-            message: String(message) // Ensure it's never undefined
+            status: result.status || 'success', // Default to success if result exists but no status
+            message: result.message || result.error || 'Operation completed.',
+            ...result
         };
 
         console.log(`[API-IN] ${payload.action} Result:`, normalizedResult);
         return normalizedResult;
     } catch (error: any) {
-        console.error("[API-CRITICAL] Request Failed:", error);
+        console.error("[API-CRITICAL] Network/Script Failure:", error);
         throw new Error(error.message || "Cannot reach backend. Ensure GAS is deployed as 'Anyone'.");
     }
 };

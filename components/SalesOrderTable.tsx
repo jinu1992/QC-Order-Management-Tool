@@ -914,7 +914,17 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         if (canInvoice) return { label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', color: 'bg-purple-600 text-white hover:bg-purple-700', onClick: () => handleCreateZohoInvoiceAction(so.id, so.poReference, so), disabled: isExecuting };
         if (so.status === 'Invoiced' && !so.awb && so.boxCount > 0) {
             const isInstamart = so.channel.toLowerCase().includes('instamart');
+            const isAmazonFba = so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba');
             const ewbMissing = (so.invoiceTotal || 0) >= 50000 && !so.ewb;
+
+            if (isAmazonFba) {
+                return { 
+                    label: 'FBA Handled', 
+                    color: 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed', 
+                    onClick: () => addNotification('Amazon FBA orders are fulfilled by Amazon, not Nimbus.', 'info'), 
+                    disabled: true 
+                };
+            }
 
             if (ewbMissing) {
                 return { 
@@ -1125,11 +1135,11 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                                         handlePushToNimbusAction(so.id, so.poReference);
                                                                                     }
                                                                                 }} 
-                                                                                disabled={!!isPushingNimbus || ((so.invoiceTotal || 0) >= 50000 && !so.ewb)} 
+                                                                                disabled={!!isPushingNimbus || ((so.invoiceTotal || 0) >= 50000 && !so.ewb) || (so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba'))} 
                                                                                 className={`flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md transition-all active:scale-95 disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed`}
                                                                             >
                                                                                 {isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}
-                                                                                {isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post'}
+                                                                                {(so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba')) ? 'FBA Fulfillment' : (isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post')}
                                                                             </button>
                                                                             {((so.invoiceTotal || 0) >= 50000 && !so.ewb) && (
                                                                                 <p className="text-[10px] text-red-600 font-black animate-pulse uppercase tracking-tighter">EWB Missing</p>
