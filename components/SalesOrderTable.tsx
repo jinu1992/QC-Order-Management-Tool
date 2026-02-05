@@ -601,7 +601,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         { id: 'Batch Created', name: 'Batch Created' },
         { id: 'Invoiced', name: 'Invoiced' },
         { id: 'Label Generated', name: 'Label Generated' },
-        { id: 'Box Data Upload Pending', name: 'Box Data Pending' },
         { id: 'Shipped', name: 'Shipped' },
         { id: 'Returned', name: 'Returned' },
         { id: 'Closed', name: 'Closed' },
@@ -609,7 +608,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
     const { salesOrders, salesTabCounts } = useMemo(() => {
         const groups: Record<string, GroupedSalesOrder> = {};
-        const counts: Record<string, number> = { 'All POs': 0, 'Confirmed': 0, 'Batch Created': 0, 'Invoiced': 0, 'Label Generated': 0, 'Box Data Upload Pending': 0, 'Shipped': 0, 'Returned': 0, 'Closed': 0 };
+        const counts: Record<string, number> = { 'All POs': 0, 'Confirmed': 0, 'Batch Created': 0, 'Invoiced': 0, 'Label Generated': 0, 'Shipped': 0, 'Returned': 0, 'Closed': 0 };
 
         purchaseOrders.forEach(po => {
             (po.items || []).forEach(item => {
@@ -639,10 +638,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 else if (eeStatusLower === 'closed') displayStatus = 'Closed';
                 else if (eeStatusLower === 'shipped' || maniDate) displayStatus = 'Shipped';
                 else if (awb) displayStatus = 'Label Generated';
-                else if (invNum) {
-                    if (eeBoxCount === 0) displayStatus = 'Box Data Upload Pending';
-                    else displayStatus = 'Invoiced';
-                } 
+                else if (invNum) displayStatus = 'Invoiced';
                 else if (batchDate || eeStatusLower === 'picking' || eeStatusLower === 'batched') displayStatus = 'Batch Created';
                 else if (eeStatusLower === 'confirmed' || eeStatusLower === 'open') displayStatus = 'Confirmed';
 
@@ -694,7 +690,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         if (s === 'Closed') return 8;
                         if (s === 'Shipped') return 7; 
                         if (s === 'Label Generated') return 6;
-                        if (s === 'Box Data Upload Pending') return 5;
                         if (s === 'Invoiced') return 4; 
                         if (s === 'Batch Created') return 3; 
                         if (s === 'Confirmed') return 2; 
@@ -798,21 +793,21 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 addNotification(res.message || 'Invoice triggered successfully.', 'success');
                 addLog('Invoice Creation', `EE Ref: ${eeRef}`);
                 
-                // Immediate local state update to "Processing" to show feedback
+                // Immediate local state update to "Processing" to show feedback & trigger rank change
                 const parentPoNumbers = poRef.split(',').map(s => s.trim());
                 setPurchaseOrders(prev => prev.map(po => {
                     if (parentPoNumbers.includes(po.poNumber)) {
                         return {
                             ...po,
                             items: po.items?.map(item => 
-                                item.eeReferenceCode === eeRef ? { ...item, invoiceNumber: 'GENERATING...' } : item
+                                item.eeReferenceCode === eeRef ? { ...item, invoiceNumber: 'GENERATING...', invoiceStatus: 'PROCESSING' } : item
                             )
                         };
                     }
                     return po;
                 }));
 
-                // Follow up with targeted refresh
+                // Follow up with targeted refresh for full details
                 await refreshSingleSOState(poRef);
             } else {
                 addNotification('Error: ' + (res.message || 'Failed to trigger invoice generation.'), 'error');
@@ -842,7 +837,22 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 addNotification(res.message || 'FBA ID Saved & Invoice triggered.', 'success');
                 addLog('Amazon FBA Invoice', `FBA ID: ${fbaId}, Ref: ${so.id}`);
                 
-                // Refresh data
+                // Immediate local state update
+                const parentPoNumbers = so.poReference.split(',').map(s => s.trim());
+                setPurchaseOrders(prev => prev.map(po => {
+                    if (parentPoNumbers.includes(po.poNumber)) {
+                        return {
+                            ...po,
+                            fbaShipmentId: fbaId,
+                            items: po.items?.map(item => 
+                                item.eeReferenceCode === so.id ? { ...item, invoiceNumber: 'GENERATING...', fbaShipmentId: fbaId } : item
+                            )
+                        };
+                    }
+                    return po;
+                }));
+                
+                // Refresh full data
                 await refreshSingleSOState(so.poReference);
                 setFbaShipmentModal({ isOpen: false, so: null });
             } else {
@@ -861,25 +871,26 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             const res = await pushToNimbusPost(eeRef);
             if (res.status === 'success') {
                 const parentPoNumbers = poRef.split(',').map(s => s.trim());
-                // Update local state immediately with AWB from response
-                if (res.awb) {
-                    setPurchaseOrders(prev => prev.map(po => {
-                        if (parentPoNumbers.includes(po.poNumber)) {
-                            return {
-                                ...po,
-                                awb: res.awb,
-                                items: po.items?.map(item => 
-                                    item.eeReferenceCode === eeRef ? { ...item, awb: res.awb, carrier: 'Assigned' } : item
-                                )
-                            };
-                        }
-                        return po;
-                    }));
-                }
+                
+                // Update local state immediately with AWB from response or placeholder
+                const awbValue = res.awb || 'SYNCING...';
+                setPurchaseOrders(prev => prev.map(po => {
+                    if (parentPoNumbers.includes(po.poNumber)) {
+                        return {
+                            ...po,
+                            awb: awbValue,
+                            items: po.items?.map(item => 
+                                item.eeReferenceCode === eeRef ? { ...item, awb: awbValue, carrier: 'Nimbus Post', trackingStatus: 'Assigned' } : item
+                            )
+                        };
+                    }
+                    return po;
+                }));
+                
                 addNotification(res.message || 'Pushed to Nimbus successfully.', 'success');
                 addLog('Nimbus Shipping', `EE Ref: ${eeRef}`);
                 
-                // Follow up with targeted refresh to get full tracking details
+                // Follow up with targeted refresh to get full tracking details from backend
                 await refreshSingleSOState(poRef);
             } else {
                 addNotification('Shipping Error: ' + (res.message || 'Failed to push to Nimbus.'), 'error');
@@ -912,7 +923,18 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         const canInvoice = !so.invoiceNumber && eeStatusLower !== 'open' && (eeStatusLower === 'confirmed' || so.status === 'Batch Created');
 
         if (canInvoice) return { label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', color: 'bg-purple-600 text-white hover:bg-purple-700', onClick: () => handleCreateZohoInvoiceAction(so.id, so.poReference, so), disabled: isExecuting };
-        if (so.status === 'Invoiced' && !so.awb && so.boxCount > 0) {
+        
+        if (so.status === 'Invoiced' && !so.awb) {
+            // Box data check
+            if (so.boxCount === 0) {
+                return { 
+                    label: 'Box Data Missing', 
+                    color: 'bg-orange-50 text-orange-600 border border-orange-200 cursor-default', 
+                    onClick: () => addNotification('Update box count in backend to enable shipping.', 'warning'), 
+                    disabled: false 
+                };
+            }
+
             const isInstamart = so.channel.toLowerCase().includes('instamart');
             const isAmazonFba = so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba');
             const ewbMissing = (so.invoiceTotal || 0) >= 50000 && !so.ewb;
@@ -1125,21 +1147,25 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                             </button>
                                                                         </div>
                                                                     )}
-                                                                    {(so.invoiceNumber && !so.awb && so.boxCount > 0) && (
+                                                                    {(so.invoiceNumber && !so.awb) && (
                                                                         <div className="flex flex-col items-center gap-1">
                                                                             <button 
                                                                                 onClick={() => {
+                                                                                    if (so.boxCount === 0) {
+                                                                                        addNotification('Please update box count first.', 'warning');
+                                                                                        return;
+                                                                                    }
                                                                                     if (so.channel.toLowerCase().includes('instamart')) {
                                                                                         setShippingConfirm({ isOpen: true, so });
                                                                                     } else {
                                                                                         handlePushToNimbusAction(so.id, so.poReference);
                                                                                     }
                                                                                 }} 
-                                                                                disabled={!!isPushingNimbus || ((so.invoiceTotal || 0) >= 50000 && !so.ewb) || (so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba'))} 
+                                                                                disabled={!!isPushingNimbus || so.boxCount === 0 || ((so.invoiceTotal || 0) >= 50000 && !so.ewb) || (so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba'))} 
                                                                                 className={`flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md transition-all active:scale-95 disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed`}
                                                                             >
                                                                                 {isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}
-                                                                                {(so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba')) ? 'FBA Fulfillment' : (isPushingNimbus === so.id ? 'Shipping...' : 'Ship with Nimbus Post')}
+                                                                                {(so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba')) ? 'FBA Fulfillment' : (isPushingNimbus === so.id ? 'Shipping...' : (so.boxCount === 0 ? 'Box Data Pending' : 'Ship with Nimbus Post'))}
                                                                             </button>
                                                                             {((so.invoiceTotal || 0) >= 50000 && !so.ewb) && (
                                                                                 <p className="text-[10px] text-red-600 font-black animate-pulse uppercase tracking-tighter">EWB Missing</p>
