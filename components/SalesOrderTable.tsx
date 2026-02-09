@@ -1,3 +1,4 @@
+
 import React, { useState, Fragment, useMemo, FC, useRef, useEffect } from 'react';
 import { type PurchaseOrder, type InventoryItem, POItem } from '../types';
 import { 
@@ -28,6 +29,7 @@ import {
     AlertIcon
 } from './icons/Icons';
 import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO, fetchPackingData, updateFBAShipmentId, syncEasyEcomShipments } from '../services/api';
+import AppointmentPass from './AppointmentPass';
 
 interface SalesOrderTableProps {
     activeFilter: string;
@@ -78,6 +80,10 @@ interface GroupedSalesOrder {
     boxCount: number;
     appointmentDate?: string;
     appointmentRequestDate?: string;
+    appointmentId?: string;
+    appointmentTime?: string;
+    appointmentRemarks?: string;
+    qrCodeUrl?: string;
     ewb?: string;
     fbaShipmentId?: string;
 }
@@ -590,6 +596,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     const [instamartPrintPackModal, setInstamartPrintPackModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     const [shippingConfirm, setShippingConfirm] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     const [fbaShipmentModal, setFbaShipmentModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
+    const [activeAppointmentPass, setActiveAppointmentPass] = useState<GroupedSalesOrder | null>(null);
     
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
     const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
@@ -679,6 +686,10 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         boxCount: eeBoxCount,
                         appointmentDate: po.appointmentDate,
                         appointmentRequestDate: po.appointmentRequestDate,
+                        appointmentId: po.appointmentId,
+                        appointmentTime: po.appointmentTime,
+                        appointmentRemarks: po.appointmentRemarks,
+                        qrCodeUrl: po.qrCodeUrl,
                         ewb: item.ewb || po.ewb,
                         fbaShipmentId: item.fbaShipmentId || po.fbaShipmentId
                     };
@@ -708,6 +719,8 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     if (!groups[refCode].trackingStatus && trackingStatus) groups[refCode].trackingStatus = trackingStatus;
                     if (!groups[refCode].ewb) groups[refCode].ewb = item.ewb || po.ewb;
                     if (!groups[refCode].fbaShipmentId) groups[refCode].fbaShipmentId = item.fbaShipmentId || po.fbaShipmentId;
+                    if (!groups[refCode].appointmentId) groups[refCode].appointmentId = po.appointmentId;
+                    if (!groups[refCode].qrCodeUrl) groups[refCode].qrCodeUrl = po.qrCodeUrl;
                 }
                 groups[refCode].items.push(item);
                 groups[refCode].qty += effectiveQty;
@@ -787,30 +800,42 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         }
 
         setIsCreatingInvoice(eeRef);
+        
+        // Optimistic State Update: Move order to "Invoiced" (GENERATING) state immediately
+        const parentPoNumbers = poRef.split(',').map(s => s.trim());
+        setPurchaseOrders(prev => prev.map(po => {
+            if (parentPoNumbers.includes(po.poNumber)) {
+                return {
+                    ...po,
+                    items: po.items?.map(item => 
+                        item.eeReferenceCode === eeRef ? { ...item, invoiceNumber: 'GENERATING...', invoiceStatus: 'PROCESSING' } : item
+                    )
+                };
+            }
+            return po;
+        }));
+
         try {
             const res = await createZohoInvoice(eeRef);
             if (res.status === 'success') {
                 addNotification(res.message || 'Invoice triggered successfully.', 'success');
                 addLog('Invoice Creation', `EE Ref: ${eeRef}`);
-                
-                // Immediate local state update to "Processing" to show feedback & trigger rank change
-                const parentPoNumbers = poRef.split(',').map(s => s.trim());
+                // Follow up with targeted refresh for full details
+                await refreshSingleSOState(poRef);
+            } else {
+                addNotification('Error: ' + (res.message || 'Failed to trigger invoice generation.'), 'error');
+                // Revert optimistic state on failure
                 setPurchaseOrders(prev => prev.map(po => {
                     if (parentPoNumbers.includes(po.poNumber)) {
                         return {
                             ...po,
                             items: po.items?.map(item => 
-                                item.eeReferenceCode === eeRef ? { ...item, invoiceNumber: 'GENERATING...', invoiceStatus: 'PROCESSING' } : item
+                                (item.eeReferenceCode === eeRef && item.invoiceNumber === 'GENERATING...') ? { ...item, invoiceNumber: undefined, invoiceStatus: undefined } : item
                             )
                         };
                     }
                     return po;
                 }));
-
-                // Follow up with targeted refresh for full details
-                await refreshSingleSOState(poRef);
-            } else {
-                addNotification('Error: ' + (res.message || 'Failed to trigger invoice generation.'), 'error');
             }
         } catch (e) {
             addNotification('Network error during invoice creation.', 'error');
@@ -824,6 +849,22 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         if (!so) return;
 
         setIsCreatingInvoice(so.id);
+        
+        // Optimistic state for FBA
+        const parentPoNumbers = so.poReference.split(',').map(s => s.trim());
+        setPurchaseOrders(prev => prev.map(po => {
+            if (parentPoNumbers.includes(po.poNumber)) {
+                return {
+                    ...po,
+                    fbaShipmentId: fbaId,
+                    items: po.items?.map(item => 
+                        item.eeReferenceCode === so.id ? { ...item, invoiceNumber: 'GENERATING...', fbaShipmentId: fbaId } : item
+                    )
+                };
+            }
+            return po;
+        }));
+
         try {
             // Step 1: Update FBA ID in Sheet
             const updateRes = await updateFBAShipmentId(so.poReference, fbaId);
@@ -836,22 +877,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             if (res.status === 'success') {
                 addNotification(res.message || 'FBA ID Saved & Invoice triggered.', 'success');
                 addLog('Amazon FBA Invoice', `FBA ID: ${fbaId}, Ref: ${so.id}`);
-                
-                // Immediate local state update
-                const parentPoNumbers = so.poReference.split(',').map(s => s.trim());
-                setPurchaseOrders(prev => prev.map(po => {
-                    if (parentPoNumbers.includes(po.poNumber)) {
-                        return {
-                            ...po,
-                            fbaShipmentId: fbaId,
-                            items: po.items?.map(item => 
-                                item.eeReferenceCode === so.id ? { ...item, invoiceNumber: 'GENERATING...', fbaShipmentId: fbaId } : item
-                            )
-                        };
-                    }
-                    return po;
-                }));
-                
                 // Refresh full data
                 await refreshSingleSOState(so.poReference);
                 setFbaShipmentModal({ isOpen: false, so: null });
@@ -867,33 +892,43 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
     const handlePushToNimbusAction = async (eeRef: string, poRef: string) => {
         setIsPushingNimbus(eeRef);
+        
+        // Optimistic update: Mark as "Label Generated" with syncing AWB
+        const parentPoNumbers = poRef.split(',').map(s => s.trim());
+        setPurchaseOrders(prev => prev.map(po => {
+            if (parentPoNumbers.includes(po.poNumber)) {
+                return {
+                    ...po,
+                    awb: 'SYNCING...',
+                    items: po.items?.map(item => 
+                        item.eeReferenceCode === eeRef ? { ...item, awb: 'SYNCING...', carrier: 'Nimbus Post', trackingStatus: 'Assigned' } : item
+                    )
+                };
+            }
+            return po;
+        }));
+
         try {
             const res = await pushToNimbusPost(eeRef);
             if (res.status === 'success') {
-                const parentPoNumbers = poRef.split(',').map(s => s.trim());
-                
-                // Update local state immediately with AWB from response or placeholder
-                const awbValue = res.awb || 'SYNCING...';
+                addNotification(res.message || 'Pushed to Nimbus successfully.', 'success');
+                addLog('Nimbus Shipping', `EE Ref: ${eeRef}`);
+                // Follow up with targeted refresh to get full tracking details from backend
+                await refreshSingleSOState(poRef);
+            } else {
+                addNotification('Shipping Error: ' + (res.message || 'Failed to push to Nimbus.'), 'error');
+                // Revert optimistic update
                 setPurchaseOrders(prev => prev.map(po => {
                     if (parentPoNumbers.includes(po.poNumber)) {
                         return {
                             ...po,
-                            awb: awbValue,
                             items: po.items?.map(item => 
-                                item.eeReferenceCode === eeRef ? { ...item, awb: awbValue, carrier: 'Nimbus Post', trackingStatus: 'Assigned' } : item
+                                (item.eeReferenceCode === eeRef && item.awb === 'SYNCING...') ? { ...item, awb: undefined, carrier: undefined, trackingStatus: undefined } : item
                             )
                         };
                     }
                     return po;
                 }));
-                
-                addNotification(res.message || 'Pushed to Nimbus successfully.', 'success');
-                addLog('Nimbus Shipping', `EE Ref: ${eeRef}`);
-                
-                // Follow up with targeted refresh to get full tracking details from backend
-                await refreshSingleSOState(poRef);
-            } else {
-                addNotification('Shipping Error: ' + (res.message || 'Failed to push to Nimbus.'), 'error');
             }
         } catch (e) {
             addNotification('Network error while shipping.', 'error');
@@ -1002,6 +1037,20 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     }}
                 />
             )}
+
+            {activeAppointmentPass && (
+                <AppointmentPass 
+                    appointmentId={activeAppointmentPass.appointmentId || 'PENDING'}
+                    appointmentDate={activeAppointmentPass.appointmentDate || 'TBD'}
+                    appointmentTime={activeAppointmentPass.appointmentTime || 'N/A'}
+                    facilityName={`${activeAppointmentPass.channel} - ${activeAppointmentPass.storeCode}`}
+                    qrCodeUrl={activeAppointmentPass.qrCodeUrl}
+                    purchaseManagerName="Portal Managed"
+                    purchaseManagerPhone="N/A"
+                    unloadingSlot={activeAppointmentPass.appointmentRemarks || 'Standard'}
+                    onClose={() => setActiveAppointmentPass(null)}
+                />
+            )}
             
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1056,7 +1105,12 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 
                                 // Error proofing: Check if it's an Instamart order with box data
                                 const isInstamart = so.channel.toLowerCase().includes('instamart');
+                                const isBlinkit = so.channel.toLowerCase().includes('blinkit');
                                 const showPrintActionInRow = isInstamart && so.boxCount > 0 && (so.status === 'Invoiced' || so.status === 'Label Generated' || !!so.awb);
+
+                                // Logic for Appointment Pass Button
+                                const showAppointmentBtn = isBlinkit && (so.status === 'Label Generated' || !!so.awb);
+                                const hasAppointmentId = !!so.appointmentId;
 
                                 return (
                                     <Fragment key={so.id}>
@@ -1070,6 +1124,22 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                             <td className="px-6 py-4 whitespace-nowrap text-gray-400">{so.orderDate}</td>
                                             <td className="px-6 py-4 text-center sticky right-0 z-10 bg-inherit border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)]" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex items-center justify-center gap-2">
+                                                    {showAppointmentBtn && (
+                                                        <button 
+                                                            onClick={(e) => { 
+                                                                e.stopPropagation(); 
+                                                                if (hasAppointmentId) {
+                                                                    setActiveAppointmentPass(so);
+                                                                } else {
+                                                                    setPortalHelper({ isOpen: true, so });
+                                                                }
+                                                            }}
+                                                            className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap flex items-center gap-1.5 ${hasAppointmentId ? 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100' : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'}`}
+                                                        >
+                                                            {hasAppointmentId ? <PrinterIcon className="h-3.5 w-3.5" /> : <PlusIcon className="h-3.5 w-3.5" />}
+                                                            {hasAppointmentId ? 'Print Appointment Pass' : 'Generate Appointment Pass'}
+                                                        </button>
+                                                    )}
                                                     {showPrintActionInRow && (
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); setInstamartPrintPackModal({ isOpen: true, so }); }}
@@ -1137,6 +1207,22 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                             <div className="flex justify-between items-center mb-4">
                                                                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><GlobeIcon className="h-4 w-4 text-blue-600" /> Logistics & Shipment Status</h4>
                                                                 <div className="flex items-center gap-3">
+                                                                    {showAppointmentBtn && (
+                                                                        <button 
+                                                                            onClick={(e) => { 
+                                                                                e.stopPropagation(); 
+                                                                                if (hasAppointmentId) {
+                                                                                    setActiveAppointmentPass(so);
+                                                                                } else {
+                                                                                    setPortalHelper({ isOpen: true, so });
+                                                                                }
+                                                                            }}
+                                                                            className={`px-6 py-2 text-[11px] font-bold rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-2 ${hasAppointmentId ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                                                                        >
+                                                                            {hasAppointmentId ? <PrinterIcon className="h-4 w-4" /> : <PlusIcon className="h-4 w-4" />}
+                                                                            {hasAppointmentId ? 'View Appointment Pass' : 'Generate Appointment ID'}
+                                                                        </button>
+                                                                    )}
                                                                     {(so.channel.toLowerCase().includes('instamart') && so.boxCount > 0) && (
                                                                         <div className="flex gap-2">
                                                                             <button 

@@ -102,6 +102,7 @@ export interface PurchaseOrder {
     appointmentRequestDate?: string;
     appointmentTime?: string;
     appointmentId?: string;
+    qrCodeUrl?: string;
     followUpCount?: number;
     appointmentRemarks?: string;
     paymentStatus?: PaymentStatus;
