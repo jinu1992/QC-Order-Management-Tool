@@ -104,30 +104,8 @@ const AppointmentPass: React.FC<AppointmentPassProps> = ({
         return dateStr;
     };
 
-    // Format time to readable format (HH:MM:SS -> HH:MM AM/PM)
-    const formatTime = (timeStr: string) => {
-        if (!timeStr) return 'TBD';
-        
-        // If already formatted, return as-is
-        if (timeStr.includes('AM') || timeStr.includes('PM')) return timeStr;
-        
-        // Handle HH:MM:SS format
-        if (timeStr.includes(':')) {
-            const parts = timeStr.split(':');
-            if (parts.length >= 2) {
-                let hours = parseInt(parts[0]);
-                const minutes = parts[1];
-                const ampm = hours >= 12 ? 'PM' : 'AM';
-                hours = hours % 12 || 12;
-                return `${hours.toString().padStart(2, '0')}:${minutes} ${ampm}`;
-            }
-        }
-        
-        return timeStr;
-    };
-
     const formattedDate = formatDate(appointmentDate);
-    const formattedTime = formatTime(appointmentTime);
+    const formattedTime = appointmentTime; // It's already formatted by SalesOrderTable
 
     // Process Google Drive URL for better printing quality
     const processedQrUrl = (() => {
@@ -160,7 +138,6 @@ const AppointmentPass: React.FC<AppointmentPassProps> = ({
         // Return original URL if not a Google Drive link or couldn't parse
         return qrCodeUrl;
     })();
-
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[200] p-4 overflow-y-auto print:hidden">

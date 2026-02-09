@@ -89,24 +89,42 @@ interface GroupedSalesOrder {
 
 // --- Formatters ---
 
-const formatDisplayTime = (timeStr?: string): string => {
-    if (!timeStr) return 'N/A';
+const formatDisplayTime = (timeInput?: any): string => {
+    if (!timeInput) return 'N/A';
+    
+    const timeStr = String(timeInput).trim();
+    
     // If it's already in AM/PM format, return it
     if (timeStr.toUpperCase().includes('AM') || timeStr.toUpperCase().includes('PM')) {
         return timeStr;
     }
     
     try {
-        // Handle HH:MM:SS or HH:MM format
-        const parts = timeStr.split(':');
-        if (parts.length >= 2) {
-            let hours = parseInt(parts[0], 10);
-            const minutes = parts[1].padStart(2, '0');
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12; // the hour '0' should be '12'
-            return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+        // Check if it's a full ISO string or Date-like string first
+        if (timeStr.includes('T') || timeStr.includes('GMT') || (timeStr.length > 12 && timeStr.includes('-'))) {
+            const dateObj = new Date(timeStr);
+            if (!isNaN(dateObj.getTime())) {
+                const formatted = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                return formatted;
+            }
         }
+
+        // Handle HH:MM:SS or HH:MM format
+        const parts = timeStr.match(/(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+        if (parts) {
+            let hours = parseInt(parts[1], 10);
+            const minutes = parts[2].padStart(2, '0');
+            
+            // Check for valid time components
+            if (hours >= 0 && hours < 24) {
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12;
+                hours = hours ? hours : 12; // the hour '0' should be '12'
+                const formatted = `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+                return formatted;
+            }
+        }
+        
         return timeStr;
     } catch (e) {
         return timeStr;
@@ -1107,7 +1125,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                             <th className="px-6 py-3">EE Status</th>
                             <th className="px-6 py-3 min-w-[140px]">
                                 <div className="flex items-center gap-2">Channel<button onClick={() => setActiveFilterColumn(activeFilterColumn === 'channel' ? null : 'channel')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.channel ? 'text-partners-green' : 'text-gray-400'}`}><FilterIcon className="h-3 w-3"/></button></div>
-                                {/* Fix: Added missing closing angle bracket for the select element */}
                                 {activeFilterColumn === 'channel' && (<div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case"><select className="w-full px-2 py-1.5 text-xs border rounded-md" value={columnFilters.channel || ''} onChange={(e) => setColumnFilters({...columnFilters, channel: e.target.value})}><option value="">All Channels</option>{uniqueChannels.map(c => <option key={c} value={c}>{c}</option>)}</select></div>)}
                             </th>
                             <th className="px-6 py-3">Store</th>
@@ -1332,7 +1349,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                     </div>
                                                                     <button 
                                                                         onClick={(e) => { e.stopPropagation(); setPortalHelper({ isOpen: true, so }); }} 
-                                                                        className={`px-6 py-2.5 text-white text-[11px] font-bold rounded-xl shadow-md transition-all flex items-center gap-2 ${so.channel.toLowerCase().includes('zepto') ? 'bg-purple-600 hover:bg-purple-700' : 'bg-yellow-500 hover:bg-yellow-600'}`}
+                                                                        className={`px-6 py-2.5 text-white text-[11px] font-bold rounded-xl shadow-md transition-all flex items-center gap-2 ${so.channel.toLowerCase().includes('zepto') ? 'bg-purple-600 hover:bg-purple-700' : 'bg-yellow-50 hover:bg-yellow-600'}`}
                                                                     >
                                                                         <CalendarIcon className="h-4 w-4" />Get Appointment Details
                                                                     </button>
