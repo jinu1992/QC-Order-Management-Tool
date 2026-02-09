@@ -1,3 +1,4 @@
+
 import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePocMapping, User, UploadMetadata } from '../types';
 
 /**
@@ -385,7 +386,13 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
                 rtoAwb: row['RTO AWB'],
                 freightCharged: Number(row['Freight Charged'] || 0),
                 totalPoValue: Number(row['Total PO Value'] || 0),
-                totalCostPrice: Number(row['Total cost price'] || 0)
+                totalCostPrice: Number(row['Total cost price'] || 0),
+                appointmentDate: formatSheetDate(row['Appointment Date']),
+                appointmentTime: row['Appointment Time'],
+                appointmentId: row['Appointment ID'] || row['Appointment Id'],
+                qrCodeUrl: row['QR Code Url'],
+                appointmentRequestDate: formatSheetDate(row['Appointment Request Date']),
+                appointmentRemarks: row['Appointment Remarks']
             });
         }
     });

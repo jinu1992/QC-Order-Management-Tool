@@ -88,6 +88,27 @@ interface GroupedSalesOrder {
     fbaShipmentId?: string;
 }
 
+// --- Formatters ---
+
+const formatDisplayTime = (timeStr?: string): string => {
+    if (!timeStr) return 'N/A';
+    try {
+        // Handle 07:30:00 format
+        const parts = timeStr.split(':');
+        if (parts.length >= 2) {
+            let hours = parseInt(parts[0], 10);
+            const minutes = parts[1];
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12; // the hour '0' should be '12'
+            return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+        }
+        return timeStr;
+    } catch (e) {
+        return timeStr;
+    }
+};
+
 // --- Amazon FBA Shipment ID Dialog ---
 
 const FbaShipmentModal: FC<{ so: GroupedSalesOrder, onSave: (id: string) => void, onClose: () => void, isSaving: boolean }> = ({ so, onSave, onClose, isSaving }) => {
@@ -1042,7 +1063,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 <AppointmentPass 
                     appointmentId={activeAppointmentPass.appointmentId || 'PENDING'}
                     appointmentDate={activeAppointmentPass.appointmentDate || 'TBD'}
-                    appointmentTime={activeAppointmentPass.appointmentTime || 'N/A'}
+                    appointmentTime={formatDisplayTime(activeAppointmentPass.appointmentTime)}
                     facilityName={`${activeAppointmentPass.channel} - ${activeAppointmentPass.storeCode}`}
                     qrCodeUrl={activeAppointmentPass.qrCodeUrl}
                     purchaseManagerName="Portal Managed"
@@ -1109,7 +1130,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 const showPrintActionInRow = isInstamart && so.boxCount > 0 && (so.status === 'Invoiced' || so.status === 'Label Generated' || !!so.awb);
 
                                 // Logic for Appointment Pass Button
-                                const showAppointmentBtn = isBlinkit && (so.status === 'Label Generated' || !!so.awb);
+                                const showAppointmentBtn = (isBlinkit) && (so.status === 'Label Generated' || !!so.awb);
                                 const hasAppointmentId = !!so.appointmentId;
 
                                 return (
@@ -1220,7 +1241,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                             className={`px-6 py-2 text-[11px] font-bold rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-2 ${hasAppointmentId ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
                                                                         >
                                                                             {hasAppointmentId ? <PrinterIcon className="h-4 w-4" /> : <PlusIcon className="h-4 w-4" />}
-                                                                            {hasAppointmentId ? 'View Appointment Pass' : 'Generate Appointment ID'}
+                                                                            {hasAppointmentId ? 'Print Appointment Pass' : 'Generate Appointment Pass'}
                                                                         </button>
                                                                     )}
                                                                     {(so.channel.toLowerCase().includes('instamart') && so.boxCount > 0) && (
@@ -1262,7 +1283,36 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                             </div>
                                                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                                                                 <div className={`p-4 rounded-xl border transition-all ${so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{so.boxCount || 0}</p></div></div></div>
-                                                                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100"><p className="text-[10px] font-bold text-indigo-400 uppercase mb-2">Appointment Date</p><div className="flex flex-col h-full"><div className="flex items-center gap-2"><CalendarIcon className={`h-4 w-4 ${so.appointmentDate ? 'text-indigo-600' : 'text-gray-300'}`} /><p className={`text-sm font-bold ${so.appointmentDate ? 'text-indigo-700' : 'text-gray-400'}`}>{so.appointmentDate || so.appointmentRequestDate || 'Pending'}</p></div><p className="text-[9px] text-indigo-400 font-medium mt-1 uppercase tracking-tighter">{so.appointmentDate ? 'Confirmed' : so.appointmentRequestDate ? 'Requested' : 'To be Scheduled'}</p></div></div>
+                                                                
+                                                                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase mb-2">Appointment Details</p>
+                                                                    <div className="flex flex-col h-full space-y-2">
+                                                                        <div className="flex flex-col">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <CalendarIcon className={`h-4 w-4 ${so.appointmentDate ? 'text-indigo-600' : 'text-gray-300'}`} />
+                                                                                <p className={`text-sm font-bold ${so.appointmentDate ? 'text-indigo-700' : 'text-gray-400'}`}>
+                                                                                    {so.appointmentDate || so.appointmentRequestDate || 'Pending'}
+                                                                                </p>
+                                                                            </div>
+                                                                            <p className="text-[9px] text-indigo-400 font-medium mt-1 uppercase tracking-tighter">
+                                                                                {so.appointmentDate ? 'Confirmed' : so.appointmentRequestDate ? 'Requested' : 'To be Scheduled'}
+                                                                            </p>
+                                                                        </div>
+                                                                        {so.appointmentTime && (
+                                                                            <div className="flex items-center gap-2">
+                                                                                <ClockIcon className="h-3.5 w-3.5 text-indigo-400" />
+                                                                                <p className="text-[11px] font-bold text-indigo-600">{formatDisplayTime(so.appointmentTime)}</p>
+                                                                            </div>
+                                                                        )}
+                                                                        {so.appointmentId && (
+                                                                            <div className="flex items-center gap-2 pt-1 border-t border-indigo-200">
+                                                                                <p className="text-[9px] font-bold text-indigo-300 uppercase">Appointment ID:</p>
+                                                                                <p className="text-[11px] font-black text-indigo-700 select-all">{so.appointmentId}</p>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
                                                                 {so.awb ? <>
                                                                 <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 col-span-1 md:col-span-1"><div className="flex flex-col h-full justify-between"><div><p className="text-[10px] font-bold text-blue-400 uppercase">Carrier & AWB</p><p className="text-sm font-bold text-gray-900 truncate">{so.carrier || 'Pending'}</p><p className="text-xs font-mono text-blue-600 font-bold tracking-wider">{so.awb}</p></div><span className={`mt-2 w-fit px-2 py-0.5 rounded text-[10px] font-bold border ${so.trackingStatus?.toLowerCase().includes('deliv') ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{so.trackingStatus || 'In-Transit'}</span></div></div>
                                                                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-100"><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Delivery SLA</p><div className="space-y-3"><div><p className="text-[9px] font-bold text-gray-400">Exp Delivery Date</p><p className="text-sm font-bold text-partners-green">{so.edd || 'TBD'}</p></div><div><p className="text-[9px] font-bold text-gray-400">Delivered Date</p><p className="text-sm font-bold text-gray-800">{so.deliveredDate || '-'}</p></div></div></div>
