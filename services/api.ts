@@ -1,4 +1,3 @@
-
 import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePocMapping, User, UploadMetadata } from '../types';
 
 /**
@@ -260,9 +259,10 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
     const poMap = new Map<string, PurchaseOrder>();
     
     const getColumnValueCaseInsensitive = (rowObj: any, target: string) => {
-        const normalizedTarget = target.toLowerCase().trim();
+        const normalizedTarget = target.toLowerCase().trim().replace(/\s+/g, '');
         for (const key in rowObj) {
-            if (key.toLowerCase().trim() === normalizedTarget) return rowObj[key];
+            const normalizedKey = key.toLowerCase().trim().replace(/\s+/g, '').replace(/_/g, '');
+            if (normalizedKey === normalizedTarget) return rowObj[key];
         }
         return undefined;
     };
@@ -283,6 +283,9 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
         
         const eeRefBoxCount = Number(getColumnValueCaseInsensitive(row, 'Box Data') || 0);
         const ewb = row['EWB'] || row['E-Way Bill'] || row['Eway Bill'];
+
+        // Robust QR Code URL fetch
+        const qrCodeUrl = getColumnValueCaseInsensitive(row, 'QRCodeURL') || row['QR Code Url'] || row['QR Code URL'];
 
         const item: POItem = {
             articleCode,
@@ -341,6 +344,7 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
             if (po.status === POStatus.Cancelled && status !== POStatus.Cancelled) {
                 po.status = status;
             }
+            if (!po.qrCodeUrl && qrCodeUrl) po.qrCodeUrl = qrCodeUrl;
         } else {
             poMap.set(poNumber, {
                 id: poNumber,
@@ -390,7 +394,7 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
                 appointmentDate: formatSheetDate(row['Appointment Date']),
                 appointmentTime: row['Appointment Time'],
                 appointmentId: row['Appointment ID'] || row['Appointment Id'],
-                qrCodeUrl: row['QR Code Url'],
+                qrCodeUrl: qrCodeUrl,
                 appointmentRequestDate: formatSheetDate(row['Appointment Request Date']),
                 appointmentRemarks: row['Appointment Remarks']
             });

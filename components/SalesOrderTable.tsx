@@ -1,4 +1,3 @@
-
 import React, { useState, Fragment, useMemo, FC, useRef, useEffect } from 'react';
 import { type PurchaseOrder, type InventoryItem, POItem } from '../types';
 import { 
@@ -92,12 +91,17 @@ interface GroupedSalesOrder {
 
 const formatDisplayTime = (timeStr?: string): string => {
     if (!timeStr) return 'N/A';
+    // If it's already in AM/PM format, return it
+    if (timeStr.toUpperCase().includes('AM') || timeStr.toUpperCase().includes('PM')) {
+        return timeStr;
+    }
+    
     try {
-        // Handle 07:30:00 format
+        // Handle HH:MM:SS or HH:MM format
         const parts = timeStr.split(':');
         if (parts.length >= 2) {
             let hours = parseInt(parts[0], 10);
-            const minutes = parts[1];
+            const minutes = parts[1].padStart(2, '0');
             const ampm = hours >= 12 ? 'PM' : 'AM';
             hours = hours % 12;
             hours = hours ? hours : 12; // the hour '0' should be '12'
@@ -392,10 +396,6 @@ boxEntries.forEach(([boxId, items], idx) => {
         printWindow.document.close();
     };
 
-
-  
-
-
     return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[120] p-4">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -607,7 +607,7 @@ const parseDateString = (dateStr: string | undefined): number => {
     } catch (e) { return 0; }
 };
 
-const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilter, purchaseOrders, setPurchaseOrders, tabCounts, addLog, addNotification, onSync, isSyncing, inventoryItems }) => {
+const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilter, purchaseOrders, setPurchaseOrders, addLog, addNotification, onSync, isSyncing, inventoryItems }) => {
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
     const [isCreatingInvoice, setIsCreatingInvoice] = useState<string | null>(null);
     const [isPushingNimbus, setIsPushingNimbus] = useState<string | null>(null);
@@ -1066,9 +1066,10 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     appointmentTime={formatDisplayTime(activeAppointmentPass.appointmentTime)}
                     facilityName={`${activeAppointmentPass.channel} - ${activeAppointmentPass.storeCode}`}
                     qrCodeUrl={activeAppointmentPass.qrCodeUrl}
-                    purchaseManagerName="Portal Managed"
+                    purchaseManagerName="BRAINLYTIC SOLUTIONS PVT LTD"
                     purchaseManagerPhone="N/A"
                     unloadingSlot={activeAppointmentPass.appointmentRemarks || 'Standard'}
+                    purchaseOrderId={activeAppointmentPass.poReference}                 
                     onClose={() => setActiveAppointmentPass(null)}
                 />
             )}
@@ -1106,6 +1107,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                             <th className="px-6 py-3">EE Status</th>
                             <th className="px-6 py-3 min-w-[140px]">
                                 <div className="flex items-center gap-2">Channel<button onClick={() => setActiveFilterColumn(activeFilterColumn === 'channel' ? null : 'channel')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.channel ? 'text-partners-green' : 'text-gray-400'}`}><FilterIcon className="h-3 w-3"/></button></div>
+                                {/* Fix: Added missing closing angle bracket for the select element */}
                                 {activeFilterColumn === 'channel' && (<div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case"><select className="w-full px-2 py-1.5 text-xs border rounded-md" value={columnFilters.channel || ''} onChange={(e) => setColumnFilters({...columnFilters, channel: e.target.value})}><option value="">All Channels</option>{uniqueChannels.map(c => <option key={c} value={c}>{c}</option>)}</select></div>)}
                             </th>
                             <th className="px-6 py-3">Store</th>
@@ -1175,6 +1177,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                 </div>
                                             </td>
                                         </tr>
+
                                         {isExpanded && (
                                             <tr className="bg-gray-50">
                                                 <td colSpan={8} className="px-4 py-8 sm:px-12">
@@ -1284,32 +1287,29 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                                                                 <div className={`p-4 rounded-xl border transition-all ${so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{so.boxCount || 0}</p></div></div></div>
                                                                 
-                                                                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-                                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase mb-2">Appointment Details</p>
-                                                                    <div className="flex flex-col h-full space-y-2">
-                                                                        <div className="flex flex-col">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <CalendarIcon className={`h-4 w-4 ${so.appointmentDate ? 'text-indigo-600' : 'text-gray-300'}`} />
-                                                                                <p className={`text-sm font-bold ${so.appointmentDate ? 'text-indigo-700' : 'text-gray-400'}`}>
-                                                                                    {so.appointmentDate || so.appointmentRequestDate || 'Pending'}
-                                                                                </p>
+                                                                {/* Custom Blinkit-style Appointment Card */}
+                                                                <div className="p-4 bg-partners-light-blue rounded-xl border border-blue-100 flex flex-col">
+                                                                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-3">Appointment Details</p>
+                                                                    <div className="flex-1 flex flex-col justify-between space-y-3">
+                                                                        <div>
+                                                                            <div className="flex items-center gap-2 mb-1">
+                                                                                <CalendarIcon className="h-5 w-5 text-blue-600" />
+                                                                                <p className="text-base font-black text-blue-800">{so.appointmentDate || so.appointmentRequestDate || 'TBD'}</p>
                                                                             </div>
-                                                                            <p className="text-[9px] text-indigo-400 font-medium mt-1 uppercase tracking-tighter">
-                                                                                {so.appointmentDate ? 'Confirmed' : so.appointmentRequestDate ? 'Requested' : 'To be Scheduled'}
+                                                                            <p className="text-[9px] font-bold text-blue-400 uppercase tracking-tighter">
+                                                                                {so.appointmentDate ? 'Confirmed' : so.appointmentRequestDate ? 'Requested' : 'No Slot Taken'}
                                                                             </p>
                                                                         </div>
-                                                                        {so.appointmentTime && (
-                                                                            <div className="flex items-center gap-2">
-                                                                                <ClockIcon className="h-3.5 w-3.5 text-indigo-400" />
-                                                                                <p className="text-[11px] font-bold text-indigo-600">{formatDisplayTime(so.appointmentTime)}</p>
-                                                                            </div>
-                                                                        )}
-                                                                        {so.appointmentId && (
-                                                                            <div className="flex items-center gap-2 pt-1 border-t border-indigo-200">
-                                                                                <p className="text-[9px] font-bold text-indigo-300 uppercase">Appointment ID:</p>
-                                                                                <p className="text-[11px] font-black text-indigo-700 select-all">{so.appointmentId}</p>
-                                                                            </div>
-                                                                        )}
+                                                                        
+                                                                        <div className="flex items-center gap-2">
+                                                                            <ClockIcon className="h-4 w-4 text-blue-600" />
+                                                                            <p className="text-sm font-bold text-blue-800">{formatDisplayTime(so.appointmentTime)}</p>
+                                                                        </div>
+
+                                                                        <div className="pt-2 border-t border-blue-100">
+                                                                            <p className="text-[8px] font-bold text-blue-400 uppercase mb-0.5">Appointment ID:</p>
+                                                                            <p className="text-xs font-black text-blue-700 font-mono tracking-tight">{so.appointmentId || 'N/A'}</p>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
 
@@ -1320,7 +1320,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                             </> : <div className="md:col-span-3 p-12 border-2 border-dashed border-gray-100 rounded-2xl flex flex-col items-center justify-center text-center">{!so.invoiceNumber ? <><LockClosedIcon className="h-8 w-8 text-gray-200 mb-3" /><p className="text-sm font-bold text-gray-400 uppercase">Logistics Pending Invoice Generation</p></> : so.boxCount === 0 ? <><div className="p-4 bg-red-50 rounded-xl border border-red-100 mb-3"><CubeIcon className="h-8 w-8 text-red-500 mx-auto mb-2" /><p className="text-sm font-bold text-red-600 uppercase">Missing Physical Box Data</p></div><p className="text-xs text-red-400">Update box count in the backend to enable shipping.</p></> : <><TruckIcon className="h-8 w-8 text-blue-200 mb-3" /><p className="text-sm font-bold text-blue-400 uppercase">Invoice Ready for Shipment</p><p className="text-xs text-blue-300 mt-1">Generate AWB by clicking the 'Ship with Nimbus' button above.</p></>}</div>}
                                                             </div>
                                                             {so.awb && (so.channel.toLowerCase().includes('blinkit') || so.channel.toLowerCase().includes('zepto')) && so.status !== 'Shipped' && so.status !== 'Returned' && (
-                                                                <div className={`mt-4 border p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-2 ${so.channel.toLowerCase().includes('zepto') ? 'bg-purple-50 border-purple-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                                                                <div className={`mt-4 border p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-2 ${so.channel.toLowerCase().includes('zepto') ? 'bg-partners-light-purple border-partners-purple/30' : 'bg-partners-light-yellow border-partners-yellow/30'}`}>
                                                                     <div className="flex items-center gap-3">
                                                                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg ${so.channel.toLowerCase().includes('zepto') ? 'bg-purple-600' : 'bg-yellow-400'}`}>
                                                                             <span className="font-black italic text-xl">{so.channel.toLowerCase().includes('zepto') ? 'z' : 'b'}</span>
