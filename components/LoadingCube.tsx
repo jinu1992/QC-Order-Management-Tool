@@ -93,12 +93,12 @@ const LoadingCube: React.FC<LoadingCubeProps> = ({ label }) => {
     }, []);
 
     return (
-        <div className="flex flex-col items-center justify-center py-10 animate-fade-in-up">
+        <div className="flex flex-col items-center justify-center py-6 animate-fade-in-up">
             <div className="relative">
                 <svg 
                     viewBox="0 0 60 60" 
-                    width="180" 
-                    height="180"
+                    width="90" 
+                    height="90"
                     stroke="#6D7582" 
                     strokeWidth="1.2"
                     strokeLinejoin="round" 
@@ -110,12 +110,12 @@ const LoadingCube: React.FC<LoadingCubeProps> = ({ label }) => {
                         <path ref={lidRef} />
                     </g>
                 </svg>
-                {/* Decorative shadow effect */}
-                <div className="absolute bottom-[-10px] left-1/2 -translate-x-1/2 w-24 h-4 bg-gray-200/50 rounded-[100%] blur-md -z-10"></div>
+                {/* Decorative shadow effect scaled by 50% */}
+                <div className="absolute bottom-[-5px] left-1/2 -translate-x-1/2 w-12 h-2 bg-gray-200/50 rounded-[100%] blur-md -z-10"></div>
             </div>
             
             {label && (
-                <div className="mt-8 text-center">
+                <div className="mt-6 text-center">
                     <p className="text-gray-400 font-black uppercase tracking-[0.3em] text-[10px] mb-2">
                         {label}
                     </p>
