@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { InventoryItem } from '../types';
 import { SearchIcon, FilterIcon, RefreshIcon, CubeIcon, PlusIcon, CheckCircleIcon, XCircleIcon, PencilIcon } from './icons/Icons';
 import { createInventoryItem, updateInventoryPrice, syncInventoryFromEasyEcom } from '../services/api';
+import LoadingCube from './LoadingCube';
 
 interface InventoryManagerProps {
     addLog: (action: string, details: string) => void;
@@ -278,10 +279,16 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
                             {filteredInventory.length === 0 ? (
                                 <tr>
                                     <td colSpan={8} className="px-6 py-10 text-center text-gray-500">
-                                        <div className="flex flex-col items-center justify-center">
-                                            <CubeIcon className="h-10 w-10 text-gray-300 mb-2" />
-                                            <p>{totalLoading ? 'Loading data...' : 'No inventory items found matching your filters.'}</p>
-                                        </div>
+                                        {totalLoading ? (
+                                            <div className="py-8">
+                                                <LoadingCube label="Fetching Inventory..." />
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center">
+                                                <CubeIcon className="h-10 w-10 text-gray-300 mb-2" />
+                                                <p>No inventory items found matching your filters.</p>
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             ) : (

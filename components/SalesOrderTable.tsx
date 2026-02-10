@@ -29,6 +29,7 @@ import {
 } from './icons/Icons';
 import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO, fetchPackingData, updateFBAShipmentId, syncEasyEcomShipments } from '../services/api';
 import AppointmentPass from './AppointmentPass';
+import LoadingCube from './LoadingCube';
 
 interface SalesOrderTableProps {
     activeFilter: string;
@@ -357,8 +358,7 @@ boxEntries.forEach(([boxId, items], idx) => {
                 <div className="p-8 overflow-y-auto bg-gray-100 flex-1">
                     {isLoading ? (
                         <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-                            <RefreshIcon className="h-10 w-10 animate-spin mb-4 text-partners-green" />
-                            <p className="font-bold">Analyzing Packing Structure...</p>
+                            <LoadingCube label="Analyzing Packing Structure..." />
                         </div>
                     ) : packingData.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-64 text-center">

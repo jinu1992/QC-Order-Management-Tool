@@ -12,6 +12,7 @@ import ReportsManager from './components/ReportsManager';
 import FileUploader from './components/FileUploader';
 import ToastContainer from './components/ToastContainer';
 import Login from './components/Login';
+import LoadingCube from './components/LoadingCube';
 import { XIcon, QuestionMarkCircleIcon, RefreshIcon } from './components/icons/Icons';
 import { initialRolePermissions } from './data/mockData';
 import { type PurchaseOrder, POStatus, ActivityLog, NotificationItem, ViewType, User, RolePermissions, InventoryItem, ChannelConfig } from './types';
@@ -172,7 +173,11 @@ const App: React.FC = () => {
   const renderContent = () => {
     if (!currentUser) return null;
     if (isLoading && purchaseOrders.length === 0) {
-        return <div className="flex-1 flex flex-col items-center justify-center p-8"><RefreshIcon className="h-12 w-12 text-partners-green animate-spin mb-4" /><p className="text-gray-600 font-bold text-lg">Syncing Dashboard...</p></div>;
+        return (
+            <div className="flex-1 flex flex-col items-center justify-center p-8">
+                <LoadingCube size="w-24 h-24" label="Solving your Dashboard..." />
+            </div>
+        );
     }
 
     switch (activeView) {
