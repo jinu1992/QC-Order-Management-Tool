@@ -167,38 +167,38 @@ const AppointmentPass: React.FC<AppointmentPassProps> = ({
                             <div  className = "font-mono uppercase" style={{ width: '384px', height: '576px', padding: '20px', display: 'flex', flexDirection: 'column', background: 'white', color: 'black' }}>
 
                             <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: '28px', fontWeight: '900', color: 'black', letterSpacing: '-0.5px', marginBottom: '15px' }}>partnersbiz</div>
+                                    <div style={{ fontSize: '28px', fontWeight: '900', color: 'black', letterSpacing: '-0.5px', marginBottom: '15px', textTransform: 'lowercase' }}>partnersbiz</div>
                                 </div>
 
                                 <div style={{ marginBottom: '10px' }}>
-                                    <div style={{ fontSize: '24px', fontWeight: '900', color: 'black', borderBottom: '2px solid black', paddingBottom: '2px', letterSpacing: '-0.5px' }}>ID : {formattedId}</div>
+                                    <div style={{ fontSize: '26px', fontWeight: '900', color: 'black', borderBottom: '2px solid black', paddingBottom: '2px', letterSpacing: '-0.5px' }}>ID : {formattedId}</div>
                                 </div>
 
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '2px' }}>
                                     <div style={{ marginBottom: '8px' }}>
-                                        <div style={{ fontSize: '9px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Date</div>
-                                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{formattedDate}</div>
+                                        <div style={{ fontSize: '11px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Date</div>
+                                        <div style={{ fontSize: '18px', fontWeight: '900', color: 'black', lineHeight: '1.2' }}>{formattedDate}</div>
                                     </div>
 
                                     <div style={{ marginBottom: '8px' }}>
-                                        <div style={{ fontSize: '9px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Facility</div>
-                                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{facilityName}</div>
+                                        <div style={{ fontSize: '11px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Reporting Time</div>
+                                        <div style={{ fontSize: '18px', fontWeight: '900', color: 'black', lineHeight: '1.2' }}>{formattedTime}</div>
                                     </div>
 
                                     <div style={{ marginBottom: '8px' }}>
-                                        <div style={{ fontSize: '9px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Reporting Time</div>
-                                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{formattedTime}</div>
+                                        <div style={{ fontSize: '11px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Facility</div>
+                                        <div style={{ fontSize: '14px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{facilityName}</div>
                                     </div>
 
                                     <div style={{ marginBottom: '8px' }}>
-                                        <div style={{ fontSize: '9px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Vendor Name</div>
-                                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{purchaseManagerName}</div>
+                                        <div style={{ fontSize: '11px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Vendor Name</div>
+                                        <div style={{ fontSize: '14px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{purchaseManagerName}</div>
                                     </div>
 
                                     {purchaseOrderId && (
                                         <div style={{ gridColumn: '1 / -1', marginBottom: '2px' }}>
-                                            <div style={{ fontSize: '9px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Purchase Order ID</div>
-                                            <div style={{ fontSize: '13px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{purchaseOrderId}</div>
+                                            <div style={{ fontSize: '11px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Purchase Order ID</div>
+                                            <div style={{ fontSize: '20px', fontWeight: '900', color: 'black', lineHeight: '1.2' }}>{purchaseOrderId}</div>
                                         </div>
                                     )}
                                 </div>
@@ -206,8 +206,8 @@ const AppointmentPass: React.FC<AppointmentPassProps> = ({
                                 <div style={{ height: '2px', background: 'black', margin: '15px 0' }}></div>
 
                                 <div style={{ textAlign: 'center', flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-                                    <div style={{ fontSize: '16px', fontWeight: '900', color: 'black', marginBottom: '4px' }}>Appointment Pass</div>
-                                    <div style={{ display: 'inline-block', width: '180px', height: '180px', background: 'white', border: '2px solid black' }}>
+                                    <div style={{ fontSize: '18px', fontWeight: '900', color: 'black', marginBottom: '4px' }}>Appointment Pass</div>
+                                    <div style={{ display: 'inline-block', width: '180px', height: '180px', background: 'white' }}>
                                         {processedQrUrl ? (
                                             <img 
                                                 src={processedQrUrl} 
@@ -222,7 +222,7 @@ const AppointmentPass: React.FC<AppointmentPassProps> = ({
                                                 alignItems: 'center', 
                                                 justifyContent: 'center',
                                                 background: 'white',
-                                                fontSize: '11px',
+                                                fontSize: '13px',
                                                 color: 'black',
                                                 fontWeight: 'bold',
                                                 textAlign: 'center',
