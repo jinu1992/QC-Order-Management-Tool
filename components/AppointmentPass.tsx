@@ -53,13 +53,23 @@ const AppointmentPass: React.FC<AppointmentPassProps> = ({
                         body {
                             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
                             background: white;
+                            color: black;
                             -webkit-print-color-adjust: exact;
                             print-color-adjust: exact;
+                        }
+
+                        .font-mono {
+                            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+                        }
+
+                        .uppercase {
+                            text-transform: uppercase;
                         }
                         
                         @media print {
                             body {
                                 background: white;
+                                color: black !important;
                             }
                         }
                     </style>
@@ -154,50 +164,50 @@ const AppointmentPass: React.FC<AppointmentPassProps> = ({
                     {/* Print Preview - Exact 4x6 ratio */}
                     <div className="border-2 border-gray-200 rounded-lg overflow-hidden mb-6 shadow-sm mx-auto" style={{ width: '320px', height: '480px' }}>
                         <div id="appointment-pass-print-content" style={{ width: '100%', height: '100%', transform: 'scale(0.833)', transformOrigin: 'top left' }}>
-                            <div style={{ width: '384px', height: '576px', padding: '40px', display: 'flex', flexDirection: 'column', background: 'white' }}>
-                                <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#1a1a1a', letterSpacing: '-0.5px', marginBottom: '15px' }}>partnersbiz</div>
+                            <div  className = "font-mono uppercase" style={{ width: '384px', height: '576px', padding: '20px', display: 'flex', flexDirection: 'column', background: 'white', color: 'black' }}>
+
+                            <div style={{ textAlign: 'center' }}>
+                                    <div style={{ fontSize: '28px', fontWeight: '900', color: 'black', letterSpacing: '-0.5px', marginBottom: '15px' }}>partnersbiz</div>
                                 </div>
 
-                                <div style={{ marginBottom: '20px' }}>
-                                    <div style={{ fontSize: '12px', color: '#666', marginBottom: '2px', fontWeight: '400' }}>ID.</div>
-                                    <div style={{ fontSize: '24px', fontWeight: '900', color: '#1a1a1a', borderBottom: '2px solid #e0e0e0', paddingBottom: '6px', letterSpacing: '-0.5px' }}>{formattedId}</div>
+                                <div style={{ marginBottom: '10px' }}>
+                                    <div style={{ fontSize: '24px', fontWeight: '900', color: 'black', borderBottom: '2px solid black', paddingBottom: '2px', letterSpacing: '-0.5px' }}>ID : {formattedId}</div>
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '2px' }}>
                                     <div style={{ marginBottom: '8px' }}>
-                                        <div style={{ fontSize: '9px', color: '#888', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Date</div>
-                                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2' }}>{formattedDate}</div>
+                                        <div style={{ fontSize: '9px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Date</div>
+                                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{formattedDate}</div>
                                     </div>
 
                                     <div style={{ marginBottom: '8px' }}>
-                                        <div style={{ fontSize: '9px', color: '#888', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Facility</div>
-                                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2' }}>{facilityName}</div>
+                                        <div style={{ fontSize: '9px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Facility</div>
+                                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{facilityName}</div>
                                     </div>
 
                                     <div style={{ marginBottom: '8px' }}>
-                                        <div style={{ fontSize: '9px', color: '#888', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Reporting Time</div>
-                                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2' }}>{formattedTime}</div>
+                                        <div style={{ fontSize: '9px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Reporting Time</div>
+                                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{formattedTime}</div>
                                     </div>
 
                                     <div style={{ marginBottom: '8px' }}>
-                                        <div style={{ fontSize: '9px', color: '#888', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Vendor Name</div>
-                                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2' }}>{purchaseManagerName}</div>
+                                        <div style={{ fontSize: '9px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Vendor Name</div>
+                                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{purchaseManagerName}</div>
                                     </div>
 
                                     {purchaseOrderId && (
-                                        <div style={{ gridColumn: '1 / -1', marginBottom: '8px' }}>
-                                            <div style={{ fontSize: '9px', color: '#888', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Purchase Order ID</div>
-                                            <div style={{ fontSize: '13px', fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2' }}>{purchaseOrderId}</div>
+                                        <div style={{ gridColumn: '1 / -1', marginBottom: '2px' }}>
+                                            <div style={{ fontSize: '9px', color: 'black', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.3px', fontWeight: '600' }}>Purchase Order ID</div>
+                                            <div style={{ fontSize: '13px', fontWeight: '700', color: 'black', lineHeight: '1.2' }}>{purchaseOrderId}</div>
                                         </div>
                                     )}
                                 </div>
 
-                                <div style={{ height: '1px', background: 'repeating-linear-gradient(90deg, #ccc 0px, #ccc 8px, transparent 8px, transparent 16px)', margin: '15px 0' }}></div>
+                                <div style={{ height: '2px', background: 'black', margin: '15px 0' }}></div>
 
                                 <div style={{ textAlign: 'center', flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-                                    <div style={{ fontSize: '16px', fontWeight: '900', color: '#1a1a1a', marginBottom: '12px' }}>Appointment Pass</div>
-                                    <div style={{ display: 'inline-block', width: '180px', height: '180px', background: 'white', border: '2px solid #f0f0f0' }}>
+                                    <div style={{ fontSize: '16px', fontWeight: '900', color: 'black', marginBottom: '4px' }}>Appointment Pass</div>
+                                    <div style={{ display: 'inline-block', width: '180px', height: '180px', background: 'white', border: '2px solid black' }}>
                                         {processedQrUrl ? (
                                             <img 
                                                 src={processedQrUrl} 
@@ -211,9 +221,9 @@ const AppointmentPass: React.FC<AppointmentPassProps> = ({
                                                 display: 'flex', 
                                                 alignItems: 'center', 
                                                 justifyContent: 'center',
-                                                background: '#f5f5f5',
+                                                background: 'white',
                                                 fontSize: '11px',
-                                                color: '#999',
+                                                color: 'black',
                                                 fontWeight: 'bold',
                                                 textAlign: 'center',
                                                 padding: '10px'
@@ -231,7 +241,7 @@ const AppointmentPass: React.FC<AppointmentPassProps> = ({
                     <div className="flex gap-3">
                         <button 
                             onClick={handlePrint}
-                            className="flex-1 px-6 py-3 bg-gray-900 text-white font-bold rounded-lg shadow-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
+                            className="flex-1 px-6 font-mono uppercase py-3 bg-gray-900 text-white font-bold rounded-lg shadow-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
                         >
                             <PrinterIcon className="h-5 w-5" />
                             Print Pass
