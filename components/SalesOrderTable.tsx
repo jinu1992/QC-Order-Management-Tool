@@ -260,20 +260,10 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
                             .page-break { page-break-after: always; }
                         }
                         .label-container {
-                            width: 4in;
-                            height: 6in;
-                            padding: 0.25in;
-                            box-sizing: border-box;
-                            display: flex;
-                            flex-direction: column;
-                            background: white;
-                            font-family: sans-serif;
-                            color: black;
+                            width: 4in; height: 6in; padding: 0.25in; box-sizing: border-box; display: flex; flex-direction: column; background: white; font-family: sans-serif; color: black;
                         }
                         .item-table th, .item-table td {
-                            text-align: left;
-                            padding: 3pt 0;
-                            border-bottom: 0.5pt solid #ddd;
+                            text-align: left; padding: 3pt 0; border-bottom: 0.5pt solid #ddd;
                         }
                     </style>
                 </head>
@@ -282,44 +272,20 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
 
         html += `
   <div class="min-h-screen p-6 font-mono page-break">
-
     <!-- HEADER -->
     <div class=" border-b-2 border-black pb-2 mb-4">
-      <p class="text-xl font-black uppercase">
-        MASTER PACKING SLIP
-      </p>
-
+      <p class="text-xl font-black uppercase">MASTER PACKING SLIP</p>
     </div>
-
     <!-- PO / INVOICE -->
     <div class="space-y-4 mb-6">
-      <div>
-        <p class="text-xs font-bold uppercase">PO Number</p>
-        <p class="text-3xl font-black uppercase">${so.poReference}</p>
-      </div>
-
-      <div>
-        <p class="text-xs font-bold uppercase">Invoice No.</p>
-        <p class="text-3xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p>
-      </div>
+      <div><p class="text-xs font-bold uppercase">PO Number</p><p class="text-3xl font-black uppercase">${so.poReference}</p></div>
+      <div><p class="text-xs font-bold uppercase">Invoice No.</p><p class="text-3xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p></div>
     </div>
-
     <!-- TOTALS -->
     <div class="border-t-2 border-black pt-4 space-y-4">
-      <div>
-        <p class="text-xs font-bold uppercase">Total Box Count</p>
-        <p class="text-3xl font-black">${totalBoxes}</p>
-      </div>
-
-      <div>
-        <p class="text-xs font-bold uppercase">SKU Count</p>
-        <p class="text-3xl font-black">${so.items.length}</p>
-      </div>
-
-      <div>
-        <p class="text-xs font-bold uppercase">Total Quantity</p>
-        <p class="text-3xl font-black">${so.qty}</p>
-      </div>
+      <div><p class="text-xs font-bold uppercase">Total Box Count</p><p class="text-3xl font-black">${totalBoxes}</p></div>
+      <div><p class="text-xs font-bold uppercase">SKU Count</p><p class="text-3xl font-black">${so.items.length}</p></div>
+      <div><p class="text-xs font-bold uppercase">Total Quantity</p><p class="text-3xl font-black">${so.qty}</p></div>
     </div>
   </div>
 `;
@@ -327,70 +293,32 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
 boxEntries.forEach(([boxId, items], idx) => {
   html += `
   <div class="min-h-screen p-6 font-mono ${idx < totalBoxes - 1 ? 'page-break' : ''}">
-
     <!-- HEADER -->
     <div class="flex justify-between items-end gap-4 border-b-2 border-black pb-2 mb-4">
-      <p class="text-xl font-black uppercase">
-        Instamart Box Label
-      </p>
-      <p class="text-xl font-black text-right">
-        BOX ${idx + 1}/${totalBoxes}
-      </p>
+      <p class="text-xl font-black uppercase">Instamart Box Label</p>
+      <p class="text-xl font-black text-right">BOX ${idx + 1}/${totalBoxes}</p>
     </div>
-
     <!-- PO / INVOICE -->
     <div class="border-b-2 border-black pb-3 mb-4 space-y-3">
-      <div>
-        <p class="text-xs font-bold uppercase">PO Number</p>
-        <p class="text-xl font-black uppercase">${so.poReference}</p>
-      </div>
-
-      <div>
-        <p class="text-xs font-bold uppercase">Invoice No.</p>
-        <p class="text-xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p>
-      </div>
+      <div><p class="text-xs font-bold uppercase">PO Number</p><p class="text-xl font-black uppercase">${so.poReference}</p></div>
+      <div><p class="text-xs font-bold uppercase">Invoice No.</p><p class="text-xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p></div>
     </div>
-
     <!-- SKU DETAILS -->
     <div class="space-y-4 mb-4">
       ${items.map(item => `
         <div class="space-y-2">
-          <div>
-            <p class="text-xs font-bold uppercase">SKU Name</p>
-            <p class="text-xl font-black uppercase">${item.productName}</p>
-          </div>
-
-          <div>
-            <p class="text-xs font-bold uppercase">SKU Code</p>
-            <p class="text-xl font-black uppercase">${item.itemCode}</p>
-          </div>
-
-          <div>
-            <p class="text-xs font-bold uppercase">EAN Barcode</p>
-            <p class="text-xl font-black uppercase">${item.ean}</p>
-          </div>
-
-          <div>
-            <p class="text-xs font-bold uppercase">Quantity</p>
-            <p class="text-xl font-black">${item.quantity}</p>
-          </div>
+          <div><p class="text-xs font-bold uppercase">SKU Name</p><p class="text-xl font-black uppercase">${item.productName}</p></div>
+          <div><p class="text-xs font-bold uppercase">SKU Code</p><p class="text-xl font-black uppercase">${item.itemCode}</p></div>
+          <div><p class="text-xs font-bold uppercase">EAN Barcode</p><p class="text-xl font-black uppercase">${item.ean}</p></div>
+          <div><p class="text-xs font-bold uppercase">Quantity</p><p class="text-xl font-black">${item.quantity}</p></div>
         </div>
       `).join('')}
     </div>
-
     <!-- FOOTER -->
     <div class="grid grid-cols-2 gap-4 border-t-2 border-black pt-4">
-      <div>
-        <p class="text-xs font-bold uppercase">Box ID</p>
-        <p class="text-lg font-bold">${boxId}</p>
-      </div>
-
-      <div class="text-right">
-        <p class="text-xs font-bold uppercase">Packing Date</p>
-        <p class="text-lg font-bold">${packingDate}</p>
-      </div>
+      <div><p class="text-xs font-bold uppercase">Box ID</p><p class="text-lg font-bold">${boxId}</p></div>
+      <div class="text-right"><p class="text-xs font-bold uppercase">Packing Date</p><p class="text-lg font-bold">${packingDate}</p></div>
     </div>
-
   </div>
   `;
 });
@@ -400,9 +328,7 @@ boxEntries.forEach(([boxId, items], idx) => {
                         window.onload = function() { 
                             setTimeout(function() {
                                 window.print(); 
-                                window.onafterprint = function() {
-                                    window.close();
-                                };
+                                window.onafterprint = function() { window.close(); };
                             }, 500);
                         };
                     </script>
@@ -648,13 +574,14 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         { id: 'Invoiced', name: 'Invoiced' },
         { id: 'Label Generated', name: 'Label Generated' },
         { id: 'Shipped', name: 'Shipped' },
+        { id: 'Delivered', name: 'Delivered' },
         { id: 'Returned', name: 'Returned' },
         { id: 'Closed', name: 'Closed' },
     ];
 
     const { salesOrders, salesTabCounts } = useMemo(() => {
         const groups: Record<string, GroupedSalesOrder> = {};
-        const counts: Record<string, number> = { 'All POs': 0, 'Confirmed': 0, 'Batch Created': 0, 'Invoiced': 0, 'Label Generated': 0, 'Shipped': 0, 'Returned': 0, 'Closed': 0 };
+        const counts: Record<string, number> = { 'All POs': 0, 'Confirmed': 0, 'Batch Created': 0, 'Invoiced': 0, 'Label Generated': 0, 'Shipped': 0, 'Delivered': 0, 'Returned': 0, 'Closed': 0 };
 
         purchaseOrders.forEach(po => {
             (po.items || []).forEach(item => {
@@ -680,8 +607,11 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 
                 let displayStatus = 'Processing';
 
+                const isDeliveredStatus = (trackingStatus || '').toLowerCase().includes('deliv') || !!item.deliveredDate || !!po.deliveredDate;
+
                 if (eeStatusLower === 'returned' || eeStatusLower === 'rto' || item.rtoStatus || po.rtoStatus) displayStatus = 'Returned';
                 else if (eeStatusLower === 'closed') displayStatus = 'Closed';
+                else if (isDeliveredStatus) displayStatus = 'Delivered';
                 else if (eeStatusLower === 'shipped' || maniDate) displayStatus = 'Shipped';
                 else if (awb) displayStatus = 'Label Generated';
                 else if (invNum) displayStatus = 'Invoiced';
@@ -737,7 +667,8 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                     if (!groups[refCode].poReference.includes(curPo)) groups[refCode].poReference += `, ${curPo}`;
                     const statusRank = (s: string) => { 
                         if (s === 'Returned') return 10;
-                        if (s === 'Closed') return 8;
+                        if (s === 'Closed') return 9;
+                        if (s === 'Delivered') return 8;
                         if (s === 'Shipped') return 7; 
                         if (s === 'Label Generated') return 6;
                         if (s === 'Invoiced') return 4; 
@@ -883,6 +814,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         }
     };
 
+    // Fix duplicate handleFbaSaveAndInvoice declaration
     const handleFbaSaveAndInvoice = async (fbaId: string) => {
         const so = fbaShipmentModal.so;
         if (!so) return;
@@ -1044,7 +976,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 disabled: isExecuting 
             };
         }
-        if (so.status === 'Label Generated' || so.awb) return { label: 'Track Order', color: 'bg-partners-green text-white hover:bg-green-700', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
+        if (so.status === 'Label Generated' || so.status === 'Shipped' || so.awb) return { label: 'Track Order', color: 'bg-partners-green text-white hover:bg-green-700', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
         return { label: 'Details', color: 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100', onClick: () => setExpandedRowId(so.id), disabled: isExecuting };
     };
 
@@ -1146,10 +1078,10 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 // Error proofing: Check if it's an Instamart order with box data
                                 const isInstamart = so.channel.toLowerCase().includes('instamart');
                                 const isBlinkit = so.channel.toLowerCase().includes('blinkit');
-                                const showPrintActionInRow = isInstamart && so.boxCount > 0 && (so.status === 'Invoiced' || so.status === 'Label Generated' || !!so.awb);
+                                const showPrintActionInRow = isInstamart && so.boxCount > 0 && (so.status === 'Invoiced' || so.status === 'Label Generated' || so.status === 'Shipped' || so.status === 'Delivered' || !!so.awb);
 
                                 // Logic for Appointment Pass Button
-                                const showAppointmentBtn = (isBlinkit) && (so.status === 'Label Generated' || !!so.awb);
+                                const showAppointmentBtn = (isBlinkit) && (so.status === 'Label Generated' || so.status === 'Shipped' || so.status === 'Delivered' || !!so.awb);
                                 const hasAppointmentId = !!so.appointmentId;
 
                                 return (
@@ -1157,7 +1089,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                         <tr className={`border-b hover:bg-gray-50 cursor-pointer ${isExpanded ? 'bg-gray-50' : 'bg-white'}`} onClick={() => setExpandedRowId(isExpanded ? null : so.id)}>
                                             <td className="p-4 text-center sticky left-0 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]"><div className="text-gray-400 hover:text-partners-green">{isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}</div></td>
                                             <td className="px-6 py-4 font-bold text-blue-600 whitespace-nowrap sticky left-12 z-10 bg-inherit border-r border-gray-100 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">{so.id}</td>
-                                            <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${so.status === 'Returned' ? 'bg-red-100 text-red-700' : so.status === 'Shipped' ? 'bg-emerald-100 text-emerald-700' : so.status === 'Label Generated' ? 'bg-amber-100 text-amber-700' : so.status === 'Box Data Upload Pending' ? 'bg-red-50 text-red-700 border border-red-100' : so.status === 'Invoiced' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>{so.status}</span></td>
+                                            <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${so.status === 'Returned' ? 'bg-red-100 text-red-700' : so.status === 'Delivered' ? 'bg-green-600 text-white shadow-sm' : so.status === 'Shipped' ? 'bg-emerald-100 text-emerald-700' : so.status === 'Label Generated' ? 'bg-amber-100 text-amber-700' : so.status === 'Box Data Upload Pending' ? 'bg-red-50 text-red-700 border border-red-100' : so.status === 'Invoiced' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>{so.status}</span></td>
                                             <td className="px-6 py-4 font-medium text-gray-800">{so.channel}</td>
                                             <td className="px-6 py-4">{so.storeCode}</td>
                                             <td className="px-6 py-4 font-medium text-gray-900">{so.qty} / ₹{totalAmountIncTax.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
@@ -1336,7 +1268,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                 <div className={`p-4 rounded-xl border ${so.status === 'Returned' ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Return Status (RTO)</p>{so.status === 'Returned' ? <div className="space-y-2"><p className="text-xs font-bold text-red-600">{so.rtoStatus || 'Returned'}</p><div><p className="text-[9px] font-bold text-gray-400">Return AWB</p><p className="text-xs font-mono font-bold text-red-600">{so.rtoAwb || 'N/A'}</p></div></div> : <div className="flex flex-col items-center justify-center py-2"><CheckCircleIcon className="h-6 w-6 text-gray-200" /><p className="text-[10px] font-bold text-gray-400 mt-1 uppercase">No Returns</p></div>}</div>
                                                             </> : <div className="md:col-span-3 p-12 border-2 border-dashed border-gray-100 rounded-2xl flex flex-col items-center justify-center text-center">{!so.invoiceNumber ? <><LockClosedIcon className="h-8 w-8 text-gray-200 mb-3" /><p className="text-sm font-bold text-gray-400 uppercase">Logistics Pending Invoice Generation</p></> : so.boxCount === 0 ? <><div className="p-4 bg-red-50 rounded-xl border border-red-100 mb-3"><CubeIcon className="h-8 w-8 text-red-500 mx-auto mb-2" /><p className="text-sm font-bold text-red-600 uppercase">Missing Physical Box Data</p></div><p className="text-xs text-red-400">Update box count in the backend to enable shipping.</p></> : <><TruckIcon className="h-8 w-8 text-blue-200 mb-3" /><p className="text-sm font-bold text-blue-400 uppercase">Invoice Ready for Shipment</p><p className="text-xs text-blue-300 mt-1">Generate AWB by clicking the 'Ship with Nimbus' button above.</p></>}</div>}
                                                             </div>
-                                                            {so.awb && (so.channel.toLowerCase().includes('blinkit') || so.channel.toLowerCase().includes('zepto')) && so.status !== 'Shipped' && so.status !== 'Returned' && (
+                                                            {so.awb && (so.channel.toLowerCase().includes('blinkit') || so.channel.toLowerCase().includes('zepto')) && so.status !== 'Shipped' && so.status !== 'Delivered' && so.status !== 'Returned' && (
                                                                 <div className={`mt-4 border p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-2 ${so.channel.toLowerCase().includes('zepto') ? 'bg-partners-light-purple border-partners-purple/30' : 'bg-partners-light-yellow border-partners-yellow/30'}`}>
                                                                     <div className="flex items-center gap-3">
                                                                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg ${so.channel.toLowerCase().includes('zepto') ? 'bg-purple-600' : 'bg-yellow-400'}`}>
