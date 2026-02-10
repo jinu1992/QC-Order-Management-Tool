@@ -589,7 +589,8 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 if (!rawRef || String(rawRef).trim() === "") return;
                 const refCode = String(rawRef).trim();
                 
-                const effectiveQty = (item.itemQuantity !== undefined && item.itemQuantity !== 0) ? item.itemQuantity : item.qty;
+                // Strictly use shipped quantity as requested for totals
+                const effectiveQty = item.shippedQuantity || 0;
                 const effectiveLineAmount = effectiveQty * (item.unitCost || 0);
                 
                 const eeBoxCount = Number(item.eeBoxCount || 0);
@@ -599,6 +600,13 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
                 const batchDate = item.eeBatchCreatedAt || po.eeBatchCreatedAt;
                 const invNum = item.invoiceNumber;
+                const hasInvoice = !!invNum && invNum !== 'GENERATING...';
+                
+                // Exception rule: YEIO Store of Amazon_FBA does not require invoicing
+                const isAmazonFbaYeio = (po.channel.toLowerCase().includes('amazon_fba') || po.channel.toLowerCase().includes('amazon fba')) && 
+                                        (po.storeCode.toUpperCase() === 'YEIO');
+                const statusHasInvoice = hasInvoice || isAmazonFbaYeio;
+
                 const maniDate = item.eeManifestDate || po.eeManifestDate;
                 const eeStatus = (item.eeOrderStatus || po.eeOrderStatus || 'Processing').trim();
                 const eeStatusLower = eeStatus.toLowerCase();
@@ -614,10 +622,12 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
                 if (eeStatusLower === 'returned' || eeStatusLower === 'rto' || item.rtoStatus || po.rtoStatus) displayStatus = 'Returned';
                 else if (eeStatusLower === 'closed') displayStatus = 'Closed';
-                else if (isDeliveredStatus) displayStatus = 'Delivered';
-                else if (eeStatusLower === 'shipped' || maniDate || trackingStatusLower === 'in transit' || isOutOfDelivery || trackingStatusLower === 'booked') displayStatus = 'Shipped';
-                else if (awb) displayStatus = 'Label Generated';
-                else if (invNum) displayStatus = 'Invoiced';
+                else if (isDeliveredStatus) displayStatus = statusHasInvoice ? 'Delivered' : 'Batch Created';
+                else if (eeStatusLower === 'shipped' || maniDate || trackingStatusLower === 'in transit' || isOutOfDelivery || trackingStatusLower === 'booked') {
+                    displayStatus = statusHasInvoice ? 'Shipped' : 'Batch Created';
+                }
+                else if (awb) displayStatus = statusHasInvoice ? 'Label Generated' : 'Batch Created';
+                else if (statusHasInvoice) displayStatus = isAmazonFbaYeio && (eeStatusLower === 'shipped' || maniDate) ? 'Shipped' : 'Invoiced'; 
                 else if (batchDate || eeStatusLower === 'picking' || eeStatusLower === 'batched') displayStatus = 'Batch Created';
                 else if (eeStatusLower === 'confirmed' || eeStatusLower === 'open') displayStatus = 'Confirmed';
 
@@ -702,6 +712,21 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         });
 
         const results = Object.values(groups);
+
+        // Final safety check: if a group accumulated a status that physically progressed but lacks a valid invoiceNumber, force back to Batch Created
+        // Updated to exclude Amazon_FBA YEIO from this enforcement
+        results.forEach(so => {
+            const hasInvoice = !!so.invoiceNumber && so.invoiceNumber !== 'GENERATING...';
+            const progressRequiringInvoice = ['Label Generated', 'Shipped', 'Delivered'].includes(so.status);
+            
+            const isAmazonFbaYeio = (so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba')) && 
+                                    (so.storeCode.toUpperCase() === 'YEIO');
+
+            if (!hasInvoice && progressRequiringInvoice && !isAmazonFbaYeio) {
+                so.status = 'Batch Created';
+            }
+        });
+
         results.forEach(so => {
             counts['All POs']++;
             if (counts[so.status] !== undefined) counts[so.status]++;
@@ -929,7 +954,12 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     const getPrimaryAction = (so: GroupedSalesOrder) => {
         const isExecuting = isCreatingInvoice === so.id || isPushingNimbus === so.id;
         const eeStatusLower = so.originalEeStatus.toLowerCase().trim();
-        const canInvoice = !so.invoiceNumber && eeStatusLower !== 'open' && (eeStatusLower === 'confirmed' || so.status === 'Batch Created');
+        
+        // Exclude Amazon_FBA YEIO from invoicing action
+        const isAmazonFbaYeio = (so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba')) && 
+                                (so.storeCode.toUpperCase() === 'YEIO');
+                                
+        const canInvoice = !isAmazonFbaYeio && !so.invoiceNumber && eeStatusLower !== 'open' && (eeStatusLower === 'confirmed' || so.status === 'Batch Created');
 
         if (canInvoice) return { label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', color: 'bg-purple-600 text-white hover:bg-purple-700', onClick: () => handleCreateZohoInvoiceAction(so.id, so.poReference, so), disabled: isExecuting };
         
@@ -985,7 +1015,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm">
-            {portalHelper.isOpen && portalHelper.so && <PortalHelperModal so={portalHelper.so} onClose={() => setPortalHelper({ isOpen: false, so: null })} />}
+            {portalHelper.isOpen && portalHelper.so && <PortalHelperModal_ so={portalHelper.so} onClose={() => setPortalHelper({ isOpen: false, so: null })} />}
             {instamartPrintPackModal.isOpen && instamartPrintPackModal.so && <InstamartPrintManager so={instamartPrintPackModal.so} onClose={() => setInstamartPrintPackModal({ isOpen: false, so: null })} />}
             {fbaShipmentModal.isOpen && fbaShipmentModal.so && (
                 <FbaShipmentModal 
@@ -1059,7 +1089,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                             </th>
                             <th className="px-6 py-3">EE Status</th>
                             <th className="px-6 py-3 min-w-[140px]">
-                                <div className="flex items-center gap-2">Channel<button onClick={() => setActiveFilterColumn(activeFilterColumn === 'channel' ? null : 'channel')} className={`p-1 rounded hover:bg-gray-100 ${columnFilters.channel ? 'text-partners-green' : 'text-gray-400'}`}><FilterIcon className="h-3 w-3"/></button></div>
+                                <div className="flex items-center gap-2">Channel<button onClick={() => setActiveFilterColumn(activeFilterColumn === 'channel' ? null : 'channel')} className={`p-1 rounded hover:bg-gray-200 ${columnFilters.channel ? 'text-partners-green' : 'text-gray-400'}`}><FilterIcon className="h-3 w-3"/></button></div>
                                 {activeFilterColumn === 'channel' && (<div ref={filterMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-40 normal-case"><select className="w-full px-2 py-1.5 text-xs border rounded-md" value={columnFilters.channel || ''} onChange={(e) => setColumnFilters({...columnFilters, channel: e.target.value})}><option value="">All Channels</option>{uniqueChannels.map(c => <option key={c} value={c}>{c}</option>)}</select></div>)}
                             </th>
                             <th className="px-6 py-3">Store</th>
@@ -1167,9 +1197,13 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                         <div className="col-span-2 flex flex-col items-center justify-center py-4 text-center">
                                                                             <InvoiceIcon className="h-8 w-8 text-purple-200 mb-2" />
                                                                             <p className="text-xs font-bold text-purple-400 uppercase">No Invoice Generated</p>
-                                                                            {(!so.invoiceNumber && so.originalEeStatus.toLowerCase().trim() !== 'open' && (so.originalEeStatus.toLowerCase().trim() === 'confirmed' || so.status === 'Batch Created')) ? (
+                                                                            {(!so.invoiceNumber && so.originalEeStatus.toLowerCase().trim() !== 'open' && (so.originalEeStatus.toLowerCase().trim() === 'confirmed' || so.status === 'Batch Created') && !((so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba')) && (so.storeCode.toUpperCase() === 'YEIO'))) ? (
                                                                                 <button onClick={() => handleCreateZohoInvoiceAction(so.id, so.poReference, so)} disabled={!!isCreatingInvoice} className="mt-4 px-4 py-2 bg-purple-600 text-white text-[11px] font-bold rounded-lg shadow-sm hover:bg-purple-700 flex items-center gap-2 transition-all active:scale-95">{isCreatingInvoice === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <PlusIcon className="h-3 w-3" />}{isCreatingInvoice === so.id ? 'Creating...' : 'Create Zoho Invoice'}</button>
-                                                                            ) : (<p className="mt-3 text-[10px] text-gray-400 italic bg-gray-100 px-3 py-1 rounded-full border border-gray-200">{so.originalEeStatus.toLowerCase().trim() === 'open' ? 'Awaiting Confirmation (Status: Open)' : 'Pending Picking/Batching in EasyEcom'}</p>)}
+                                                                            ) : (<p className="mt-3 text-[10px] text-gray-400 italic bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
+                                                                                {((so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba')) && (so.storeCode.toUpperCase() === 'YEIO')) 
+                                                                                    ? 'Invoicing not required for this store' 
+                                                                                    : (so.originalEeStatus.toLowerCase().trim() === 'open' ? 'Awaiting Confirmation (Status: Open)' : 'Pending Picking/Batching in EasyEcom')}
+                                                                            </p>)}
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -1311,5 +1345,8 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         </div>
     );
 };
+
+// Internal Helper for Modal to avoid circular dependency
+const PortalHelperModal_ = PortalHelperModal;
 
 export default SalesOrderTable;
