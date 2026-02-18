@@ -25,7 +25,8 @@ import {
     FilterIcon,
     ClockIcon,
     PrinterIcon,
-    AlertIcon
+    AlertIcon,
+    QuestionMarkCircleIcon
 } from './icons/Icons';
 import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO, fetchPackingData, updateFBAShipmentId, syncEasyEcomShipments } from '../services/api';
 import AppointmentPass from './AppointmentPass';
@@ -493,7 +494,9 @@ const CopyField = ({ label, value, icon }: { label: string, value: string, icon:
 };
 
 const PortalHelperModal: FC<{ so: GroupedSalesOrder, onClose: () => void }> = ({ so, onClose }) => {
+    const [showHelp, setShowHelp] = useState(false);
     const isZepto = so.channel.toLowerCase().includes('zepto');
+    const isBlinkit = so.channel.toLowerCase().includes('blinkit');
     const portalName = isZepto ? 'Zepto Brands' : 'Blinkit Partners';
     const portalUrl = isZepto ? 'https://brands.zepto.co.in/' : 'https://partnersbiz.com';
     const brandColor = isZepto ? 'bg-purple-600' : 'bg-yellow-400';
@@ -503,21 +506,67 @@ const PortalHelperModal: FC<{ so: GroupedSalesOrder, onClose: () => void }> = ({
     const amountWithTax = (so.amount * 1.05).toFixed(0);
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-            <div className="bg-partners-gray-bg rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-white">
-                <div className="p-6 bg-white border-b border-gray-100 flex justify-between items-center">
+            <div className="bg-partners-gray-bg rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-white flex flex-col max-h-[90vh]">
+                <div className="p-6 bg-white border-b border-gray-100 flex justify-between items-center shrink-0">
                     <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 ${brandColor} rounded-xl flex items-center justify-center text-white shadow-lg ${shadowColor}`}>
                             <span className="font-black italic text-xl">{logoText}</span>
                         </div>
                         <div><h3 className="text-lg font-bold text-gray-800">{portalName} Helper</h3><p className="text-xs text-gray-500">Portal: <span className="font-bold text-partners-green">{portalUrl.replace('https://', '')}</span></p></div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><XCircleIcon className="h-6 w-6 text-gray-400"/></button>
-                </div>
-                <div className="p-6 space-y-6">
-                    <div className="bg-partners-light-green border-2 border-dashed border-partners-green/30 p-4 rounded-2xl flex gap-4 items-start">
-                        <div className="bg-partners-green p-2 rounded-lg text-white"><CalendarIcon className="h-5 w-5" /></div>
-                        <div><p className="text-sm font-bold text-partners-green uppercase tracking-tight">Scheduling Instructions</p><p className="text-sm text-gray-700 mt-1 leading-relaxed">Take the <span className="font-bold underline">earliest available slot</span> on the suggested date in the portal.<br/><span className="text-red-600 font-extrabold uppercase">Important: Do not select Sundays.</span></p></div>
+                    <div className="flex items-center gap-2">
+                        {isBlinkit && (
+                            <button 
+                                onClick={() => setShowHelp(!showHelp)} 
+                                className={`p-2 rounded-full transition-all flex items-center gap-1.5 text-xs font-bold ${showHelp ? 'bg-partners-green text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                                title="Blinkit Portal Instructions"
+                            >
+                                <QuestionMarkCircleIcon className="h-5 w-5" />
+                                <span className="hidden sm:inline">{showHelp ? 'Hide Guide' : 'How to Schedule?'}</span>
+                            </button>
+                        )}
+                        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><XCircleIcon className="h-6 w-6 text-gray-400"/></button>
                     </div>
+                </div>
+
+                <div className="p-6 space-y-6 overflow-y-auto">
+                    {showHelp && isBlinkit && (
+                        <div className="bg-partners-light-green border-2 border-partners-green/20 p-5 rounded-2xl animate-in slide-in-from-top-4 duration-300">
+                            <div className="flex items-center gap-2 mb-4 text-partners-green">
+                                <ClipboardListIcon className="h-5 w-5" />
+                                <h4 className="font-bold uppercase text-xs tracking-wider">Steps to Schedule an Appointment on Partnerbiz</h4>
+                            </div>
+                            <ul className="text-xs text-gray-700 space-y-3 list-decimal ml-4 font-medium leading-relaxed">
+                                <li>Log in to the <span className="font-bold">Partnerbiz Vendor Portal</span>.</li>
+                                <li>From the left-hand menu, click on <span className="font-bold">Appointments</span>.</li>
+                                <li>Select <span className="font-bold text-partners-green">Open Appointments</span>.</li>
+                                <li>On the right-most side, click on <span className="font-bold">Action</span>.</li>
+                                <li>Click on <span className="font-bold">Schedule</span>.</li>
+                                <li>Enter the <span className="font-bold">AWB number</span> and the total PO quantity being supplied.</li>
+                                <li>Select an appointment date <span className="font-bold text-partners-green">7-10 days</span> from the shipping date.
+                                    <div className="mt-1 flex flex-col gap-1 pl-2 border-l-2 border-partners-green/10 ml-1">
+                                        <span className="text-partners-green font-bold">• Prefer early morning slots (8-11am).</span>
+                                        <span className="text-red-600 font-bold">• Do not select slots after 3pm.</span>
+                                    </div>
+                                </li>
+                                <li>After scheduling, click on <span className="font-bold">Download QR</span> on the right-hand side. This QR code is the appointment pass for the PO.</li>
+                            </ul>
+                        </div>
+                    )}
+
+                    {!showHelp && (
+                         <div className="bg-partners-light-green border-2 border-dashed border-partners-green/30 p-4 rounded-2xl flex gap-4 items-center shadow-sm">
+                            <div className="bg-partners-green p-2 rounded-lg text-white shadow-sm shadow-green-100"><CalendarIcon className="h-5 w-5" /></div>
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-partners-green">Ready for Scheduling</p>
+                                <p className="text-[11px] text-gray-500 font-medium">Click the button below to open the vendor portal and use the fields to copy-paste data.</p>
+                            </div>
+                            {isBlinkit && (
+                                <button onClick={() => setShowHelp(true)} className="text-[10px] font-black uppercase text-partners-green underline hover:text-green-700 transition-colors">View Steps</button>
+                            )}
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <CopyField label="PO Number" value={so.poReference} icon={<ClipboardListIcon className="h-3 w-3"/>} />
                         <CopyField label="Fulfilled Quantity" value={String(so.qty)} icon={<CubeIcon className="h-3 w-3"/>} />
@@ -842,7 +891,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         }
     };
 
-    // Fix duplicate handleFbaSaveAndInvoice declaration
     const handleFbaSaveAndInvoice = async (fbaId: string) => {
         const so = fbaShipmentModal.so;
         if (!so) return;

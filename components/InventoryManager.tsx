@@ -1,12 +1,13 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { InventoryItem } from '../types';
-import { SearchIcon, FilterIcon, RefreshIcon, CubeIcon, PlusIcon, CheckCircleIcon, XCircleIcon, PencilIcon } from './icons/Icons';
+import React, { useState, useMemo } from 'react';
+import { InventoryItem, PurchaseOrder, POStatus } from '../types';
+import { SearchIcon, FilterIcon, RefreshIcon, CubeIcon, PlusIcon, CheckCircleIcon, XCircleIcon, PencilIcon, AlertIcon, ClipboardListIcon } from './icons/Icons';
 import { createInventoryItem, updateInventoryPrice, syncInventoryFromEasyEcom } from '../services/api';
 import LoadingCube from './LoadingCube';
 
 interface InventoryManagerProps {
     addLog: (action: string, details: string) => void;
     inventoryItems: InventoryItem[];
+    purchaseOrders: PurchaseOrder[];
     setInventoryItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>;
     onSync: () => void;
     isSyncing: boolean;
@@ -70,7 +71,6 @@ const CreateItemModal = ({ onClose, onSave, uniqueChannels }: { onClose: () => v
                             value={formData.sku}
                             onChange={e => setFormData({...formData, sku: e.target.value})}
                         />
-                        <p className="text-xs text-red-500 mt-1">Cannot be changed after creation.</p>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Selling Price</label>
@@ -91,7 +91,8 @@ const CreateItemModal = ({ onClose, onSave, uniqueChannels }: { onClose: () => v
     );
 };
 
-const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryItems, setInventoryItems, onSync, isSyncing }) => {
+const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryItems, purchaseOrders, setInventoryItems, onSync, isSyncing }) => {
+    const [activeTab, setActiveTab] = useState<'mapping' | 'shortfall'>('mapping');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedChannel, setSelectedChannel] = useState<string>('All Channels');
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -101,106 +102,128 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editPrice, setEditPrice] = useState<string>('');
 
-    const uniqueChannels = useMemo(() => {
-        return ['All Channels', ...Array.from(new Set(inventoryItems.map(item => item.channel)))];
-    }, [inventoryItems]);
+    // --- Aggregated Shortfall Logic (By Master SKU, only from New POs) ---
+    const shortfallData = useMemo(() => {
+        const skuMap: Record<string, { sku: string, itemName: string, stock: number, shortfall: number }> = {};
+        
+        // 1. Initialize with current inventory stock
+        inventoryItems.forEach(item => {
+            const sku = String(item.sku).trim();
+            if (!skuMap[sku]) {
+                skuMap[sku] = { sku, itemName: item.itemName, stock: item.stock, shortfall: 0 };
+            } else {
+                // Take highest reported stock for the master SKU across channels
+                skuMap[sku].stock = Math.max(skuMap[sku].stock, item.stock);
+                if (item.itemName && item.itemName !== 'Syncing...') skuMap[sku].itemName = item.itemName;
+            }
+        });
+
+        // 2. Calculate shortfall only from POs in "New", "Waiting", or "Confirmed" section
+        const newPOStatuses = [POStatus.NewPO, POStatus.WaitingForConfirmation, POStatus.ConfirmedToSend];
+        
+        purchaseOrders.forEach(po => {
+            if (!newPOStatuses.includes(po.status)) return;
+            
+            (po.items || []).forEach(item => {
+                // Shortfall is only for items NOT yet pushed and NOT cancelled
+                if (!item.eeOrderRefId && (item.itemStatus || '').toLowerCase() !== 'cancelled') {
+                    const sku = String(item.masterSku || item.articleCode).trim();
+                    const shortfall = Math.max(0, (item.qty || 0) - (item.fulfillableQty || 0));
+                    
+                    if (shortfall > 0) {
+                        if (!skuMap[sku]) {
+                            skuMap[sku] = { sku, itemName: item.itemName || 'Unknown Item', stock: 0, shortfall: 0 };
+                        }
+                        skuMap[sku].shortfall += shortfall;
+                    }
+                }
+            });
+        });
+
+        return Object.values(skuMap).filter(item => item.shortfall > 0).sort((a, b) => b.shortfall - a.shortfall);
+    }, [inventoryItems, purchaseOrders]);
+
+    const inventoryStats = useMemo(() => {
+        const totalMappings = inventoryItems.length;
+        const lowStockCount = inventoryItems.filter(i => i.stock < 50).length;
+        const totalShortfallUnits = shortfallData.reduce((acc, item) => acc + item.shortfall, 0);
+        const shortfallSkus = shortfallData.length;
+
+        return { totalMappings, lowStockCount, totalShortfallUnits, shortfallSkus };
+    }, [inventoryItems, shortfallData]);
 
     const filteredInventory = useMemo(() => {
         return inventoryItems.filter(item => {
             const matchesSearch = 
                 (item.sku || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
                 (item.itemName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (item.articleCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                String(item.ean || '').includes(searchQuery);
+                (item.articleCode || '').toLowerCase().includes(searchQuery.toLowerCase());
             const matchesChannel = selectedChannel === 'All Channels' || item.channel === selectedChannel;
             return matchesSearch && matchesChannel;
         });
     }, [inventoryItems, searchQuery, selectedChannel]);
 
+    const filteredShortfall = useMemo(() => {
+        return shortfallData.filter(item => 
+            item.sku.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            item.itemName.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [shortfallData, searchQuery]);
+
+    const uniqueChannels = useMemo(() => {
+        return ['All Channels', ...Array.from(new Set(inventoryItems.map(item => item.channel)))];
+    }, [inventoryItems]);
+
     const handleInternalSync = async () => {
         setIsInternalSyncing(true);
-        addLog('Inventory Sync', 'Triggering backend updateMasterSkuInventory...');
+        addLog('Inventory Sync', 'Triggering Master SKU inventory update...');
         try {
             const result = await syncInventoryFromEasyEcom();
             if (result.status === 'success') {
-                addLog('Inventory Sync', 'Backend sync completed successfully. Reloading data...');
-                // Trigger the parent refresh to update the table
+                addLog('Inventory Sync', 'EasyEcom inventory fetch complete.');
                 onSync();
             } else {
-                alert('Backend sync failed: ' + result.message);
-                addLog('Sync Error', result.message || 'Unknown error');
+                alert('Sync failed: ' + result.message);
             }
         } catch (e) {
-            console.error(e);
-            alert('Network error triggering inventory sync.');
-            addLog('Sync Error', 'Network error');
+            addLog('Sync Error', 'Network failure during inventory sync');
         } finally {
             setIsInternalSyncing(false);
         }
     };
 
     const handleCreateItem = async (newItem: any) => {
-        // Optimistic UI update
-        const tempId = `temp-${Date.now()}`;
-        const newInventoryItem: InventoryItem = {
-            id: tempId,
-            ...newItem,
-            ean: 'Syncing...',
-            itemName: 'Syncing...',
-            mrp: 0,
-            basicPrice: 0,
-            stock: 0
-        };
-
-        setInventoryItems(prev => [newInventoryItem, ...prev]);
         setShowCreateModal(false);
         addLog('Create Item', `Creating mapping for ${newItem.articleCode}`);
-
         try {
             const result = await createInventoryItem(newItem);
             if (result && result.status === 'success') {
-                addLog('Success', 'Item saved to database. Refreshing...');
-                onSync(); // Refresh to get real ID and EasyEcom details
-            } else {
-                addLog('Error', 'Failed to save item to database.');
+                onSync();
             }
         } catch (e) {
-            console.error(e);
-            addLog('Error', 'Network error creating item.');
+            addLog('Error', 'Failed to create item mapping');
         }
-    };
-
-    const startEditing = (item: InventoryItem) => {
-        setEditingId(item.id);
-        setEditPrice(item.spIncTax.toString());
     };
 
     const savePrice = async (item: InventoryItem) => {
         if (!editPrice) return;
         const newPrice = parseFloat(editPrice);
-        
-        // Optimistic Update
-        setInventoryItems(prev => prev.map(i => i.id === item.id ? { ...i, spIncTax: newPrice } : i));
         setEditingId(null);
-        addLog('Update Price', `Updating price for ${item.articleCode} to ${newPrice}`);
-
         try {
             const result = await updateInventoryPrice(item.channel, item.articleCode, newPrice);
-            if (result && result.status !== 'success') {
-                 addLog('Error', 'Failed to update price in database.');
-                 // Revert if needed, but simple alert for now
-                 alert('Failed to save price to Google Sheet');
+            if (result && result.status === 'success') {
+                setInventoryItems(prev => prev.map(i => i.id === item.id ? { ...i, spIncTax: newPrice } : i));
+                addLog('Update Price', `Updated price for ${item.articleCode} to ₹${newPrice}`);
             }
         } catch (e) {
-            console.error(e);
-            alert('Network error saving price');
+            alert('Failed to save updated price');
         }
     };
 
     const totalLoading = isSyncing || isInternalSyncing;
 
     return (
-        <div className="p-4 sm:p-6 lg:p-8 flex-1">
+        <div className="p-4 sm:p-6 lg:p-8 flex-1 space-y-6">
             {showCreateModal && (
                 <CreateItemModal 
                     onClose={() => setShowCreateModal(false)}
@@ -209,148 +232,213 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
                 />
             )}
 
-            <header className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
+            <header className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Inventory Management</h1>
-                    <p className="text-gray-500 mt-1">View channel SKU mappings and real-time stock levels synced from EasyEcom.</p>
+                    <h1 className="text-2xl font-bold text-gray-800">Inventory & Mapping</h1>
+                    <p className="text-gray-500 mt-1">Manage SKU mappings and track procurement shortfalls from new orders.</p>
                 </div>
                 <div className="flex gap-2">
                     <button 
                         onClick={() => setShowCreateModal(true)}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
                     >
                         <PlusIcon className="h-4 w-4" />
-                        Create New Item
+                        New Mapping
                     </button>
                     <button 
                         onClick={handleInternalSync}
                         disabled={totalLoading}
-                        className={`flex items-center gap-2 px-4 py-2.5 bg-partners-green text-white font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm ${totalLoading ? 'opacity-75 cursor-wait' : ''}`}
+                        className={`flex items-center gap-2 px-4 py-2.5 bg-partners-green text-white font-bold rounded-lg hover:bg-green-700 transition-colors shadow-sm ${totalLoading ? 'opacity-75 cursor-wait' : ''}`}
                     >
                         <RefreshIcon className={`h-4 w-4 ${totalLoading ? 'animate-spin' : ''}`} />
-                        {totalLoading ? 'Syncing...' : 'Sync Data'}
+                        {totalLoading ? 'Syncing...' : 'Sync Stock'}
                     </button>
                 </div>
             </header>
 
+            {/* Sub Tabs */}
+            <div className="flex gap-6 border-b border-gray-200">
+                <button 
+                    onClick={() => setActiveTab('mapping')}
+                    className={`pb-3 text-sm font-bold transition-all border-b-2 px-2 ${activeTab === 'mapping' ? 'border-partners-green text-partners-green' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                >
+                    Item Mappings <span className="ml-1 opacity-60">({inventoryStats.totalMappings})</span>
+                </button>
+                <button 
+                    onClick={() => setActiveTab('shortfall')}
+                    className={`pb-3 text-sm font-bold transition-all border-b-2 px-2 flex items-center gap-2 ${activeTab === 'shortfall' ? 'border-red-500 text-red-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                >
+                    Shortfall Analysis
+                    {inventoryStats.shortfallSkus > 0 && (
+                        <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full border border-red-200">{inventoryStats.shortfallSkus}</span>
+                    )}
+                </button>
+            </div>
+
+            {/* KPI Summary Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-blue-500">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Mappings</p>
+                    <p className="text-2xl font-black text-gray-800 mt-1">{inventoryStats.totalMappings}</p>
+                </div>
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-amber-500">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Low Stock Alert</p>
+                    <p className="text-2xl font-black text-amber-600 mt-1">{inventoryStats.lowStockCount}</p>
+                </div>
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-red-500">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Shortfall Units (New POs)</p>
+                    <p className="text-2xl font-black text-red-600 mt-1">{inventoryStats.totalShortfallUnits}</p>
+                </div>
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-purple-500">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Critical SKUs</p>
+                    <p className="text-2xl font-black text-purple-600 mt-1">{inventoryStats.shortfallSkus}</p>
+                </div>
+            </div>
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50">
+                <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/50">
                     <div className="relative flex-1 max-w-md">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <SearchIcon className="h-4 w-4 text-gray-400" />
                         </div>
                         <input
                             type="text"
-                            placeholder="Search by SKU, Item Name, EAN..."
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg leading-5 bg-white placeholder-gray-400 focus:outline-none focus:placeholder-gray-300 focus:border-partners-green focus:ring-1 focus:ring-partners-green sm:text-sm transition duration-150 ease-in-out"
+                            placeholder={activeTab === 'mapping' ? "Search SKU, Item Name, Article..." : "Search Master SKU or Item..."}
+                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-partners-green sm:text-sm"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
-                    <div className="flex items-center gap-2">
-                        <FilterIcon className="h-4 w-4 text-gray-500" />
-                        <select 
-                            value={selectedChannel} 
-                            onChange={(e) => setSelectedChannel(e.target.value)}
-                            className="block w-48 pl-3 pr-10 py-2 text-base border-gray-200 focus:outline-none focus:ring-partners-green focus:border-partners-green sm:text-sm rounded-lg"
-                        >
-                            {uniqueChannels.map(channel => (
-                                <option key={channel} value={channel}>{channel}</option>
-                            ))}
-                        </select>
-                    </div>
+                    {activeTab === 'mapping' && (
+                        <div className="flex items-center gap-2">
+                            <FilterIcon className="h-4 w-4 text-gray-500" />
+                            <select 
+                                value={selectedChannel} 
+                                onChange={(e) => setSelectedChannel(e.target.value)}
+                                className="block w-48 pl-3 pr-10 py-2 text-base border-gray-200 focus:outline-none focus:ring-partners-green sm:text-sm rounded-lg"
+                            >
+                                {uniqueChannels.map(channel => (
+                                    <option key={channel} value={channel}>{channel}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left text-gray-600">
-                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
-                            <tr>
-                                <th scope="col" className="px-6 py-3 font-semibold">Channel</th>
-                                <th scope="col" className="px-6 py-3 font-semibold">Channel SKU (Article)</th>
-                                <th scope="col" className="px-6 py-3 font-semibold">Master SKU</th>
-                                <th scope="col" className="px-6 py-3 font-semibold">Item Name</th>
-                                <th scope="col" className="px-6 py-3 font-semibold text-right">MRP</th>
-                                <th scope="col" className="px-6 py-3 font-semibold text-right">Stock</th>
-                                <th scope="col" className="px-6 py-3 font-semibold text-right">Selling Price</th>
-                                <th scope="col" className="px-6 py-3 font-semibold text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {filteredInventory.length === 0 ? (
+                    {activeTab === 'mapping' ? (
+                        <table className="w-full text-sm text-left text-gray-600">
+                            <thead className="text-[11px] text-gray-400 uppercase bg-gray-50 border-b border-gray-200 font-bold tracking-wider">
                                 <tr>
-                                    <td colSpan={8} className="px-6 py-10 text-center text-gray-500">
-                                        {totalLoading ? (
-                                            <div className="py-8">
-                                                <LoadingCube label="Fetching Inventory..." />
-                                            </div>
-                                        ) : (
-                                            <div className="flex flex-col items-center justify-center">
-                                                <CubeIcon className="h-10 w-10 text-gray-300 mb-2" />
-                                                <p>No inventory items found matching your filters.</p>
-                                            </div>
-                                        )}
-                                    </td>
+                                    <th scope="col" className="px-6 py-4">Channel</th>
+                                    <th scope="col" className="px-6 py-4">Article Code</th>
+                                    <th scope="col" className="px-6 py-4">Master SKU</th>
+                                    <th scope="col" className="px-6 py-4">Item Name</th>
+                                    <th scope="col" className="px-6 py-4 text-right">MRP</th>
+                                    <th scope="col" className="px-6 py-4 text-right">Stock</th>
+                                    <th scope="col" className="px-6 py-4 text-right">Selling Price</th>
+                                    <th scope="col" className="px-6 py-4 text-right">Action</th>
                                 </tr>
-                            ) : (
-                                filteredInventory.map((item) => (
-                                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                                item.channel === 'Blinkit' ? 'bg-yellow-100 text-yellow-800' :
-                                                item.channel === 'Zepto' ? 'bg-purple-100 text-purple-800' :
-                                                item.channel === 'Swiggy Instamart' ? 'bg-orange-100 text-orange-800' :
-                                                'bg-blue-100 text-blue-800'
-                                            }`}>
-                                                {item.channel}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-gray-500">{item.articleCode}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900 bg-gray-50 select-all" title="Mapped - Cannot Change">
-                                            {item.sku}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="text-sm text-gray-900 line-clamp-2" title={item.itemName}>{item.itemName}</div>
-                                            <div className="text-xs text-gray-400 mt-0.5">EAN: {item.ean}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right">₹{item.mrp}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                                            <span className={`font-bold ${item.stock < 50 ? 'text-red-600' : 'text-green-600'}`}>
-                                                {item.stock}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right font-medium text-blue-800">
-                                            {editingId === item.id ? (
-                                                <input 
-                                                    type="number"
-                                                    className="w-20 p-1 border rounded text-right focus:ring-partners-green focus:border-partners-green"
-                                                    value={editPrice}
-                                                    onChange={e => setEditPrice(e.target.value)}
-                                                    autoFocus
-                                                />
-                                            ) : (
-                                                `₹${item.spIncTax}`
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                                            {editingId === item.id ? (
-                                                <div className="flex justify-end gap-2">
-                                                    <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-600"><XCircleIcon className="h-5 w-5"/></button>
-                                                    <button onClick={() => savePrice(item)} className="text-green-500 hover:text-green-700"><CheckCircleIcon className="h-5 w-5"/></button>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {filteredInventory.length === 0 ? (
+                                    <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-500 italic">No mappings found.</td></tr>
+                                ) : (
+                                    filteredInventory.map((item) => (
+                                        <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <span className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase border ${
+                                                    item.channel === 'Blinkit' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
+                                                    item.channel === 'Zepto' ? 'bg-purple-50 text-purple-700 border-purple-100' :
+                                                    item.channel === 'Swiggy Instamart' ? 'bg-orange-50 text-orange-700 border-orange-100' :
+                                                    'bg-blue-50 text-blue-700 border-blue-100'
+                                                }`}>
+                                                    {item.channel}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-gray-400">{item.articleCode}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-900">{item.sku}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="text-sm font-medium text-gray-900 line-clamp-1">{item.itemName}</div>
+                                                <div className="text-[10px] text-gray-400 font-mono mt-0.5">{item.ean}</div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right text-gray-400">₹{item.mrp}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                                                <span className={`font-bold ${item.stock < 50 ? 'text-red-600' : 'text-emerald-600'}`}>{item.stock}</span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right font-bold text-blue-800">
+                                                {editingId === item.id ? (
+                                                    <input 
+                                                        type="number"
+                                                        className="w-20 p-1 border rounded text-right font-bold text-sm"
+                                                        value={editPrice}
+                                                        onChange={e => setEditPrice(e.target.value)}
+                                                        autoFocus
+                                                    />
+                                                ) : (
+                                                    `₹${item.spIncTax}`
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                                                {editingId === item.id ? (
+                                                    <div className="flex justify-end gap-2">
+                                                        <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-600"><XCircleIcon className="h-5 w-5"/></button>
+                                                        <button onClick={() => savePrice(item)} className="text-green-500 hover:text-green-700"><CheckCircleIcon className="h-5 w-5"/></button>
+                                                    </div>
+                                                ) : (
+                                                    <button onClick={() => { setEditingId(item.id); setEditPrice(item.spIncTax.toString()); }} className="text-gray-400 hover:text-blue-600 transition-colors p-2 hover:bg-gray-100 rounded-lg">
+                                                        <PencilIcon className="h-4 w-4"/>
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    ) : (
+                        // Shortfall Analysis Table (Channel-Agnostic, Aggregated)
+                        <table className="w-full text-sm text-left text-gray-600">
+                            <thead className="text-[11px] text-gray-400 uppercase bg-gray-50 border-b border-gray-200 font-bold tracking-wider">
+                                <tr>
+                                    <th scope="col" className="px-6 py-4">Master SKU</th>
+                                    <th scope="col" className="px-6 py-4">Item Name</th>
+                                    <th scope="col" className="px-6 py-4 text-right">Available Stock</th>
+                                    <th scope="col" className="px-6 py-4 text-right text-red-600">Total Shortfall</th>
+                                    <th scope="col" className="px-6 py-4 text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {filteredShortfall.length === 0 ? (
+                                    <tr><td colSpan={5} className="px-6 py-20 text-center text-gray-500 italic flex flex-col items-center gap-2"><CheckCircleIcon className="h-10 w-10 text-emerald-500" /><p>No shortfall detected in new purchase orders.</p></td></tr>
+                                ) : (
+                                    filteredShortfall.map((item, idx) => (
+                                        <tr key={idx} className="hover:bg-red-50/10 transition-colors border-l-4 border-l-red-100">
+                                            <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-900">{item.sku}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="text-sm font-medium text-gray-900 line-clamp-1">{item.itemName}</div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                                                <span className={`font-bold ${item.stock <= 0 ? 'text-red-500' : 'text-gray-700'}`}>{item.stock}</span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                                                <div className="flex flex-col items-end">
+                                                    <span className="font-black text-red-600 text-base">{item.shortfall}</span>
+                                                    <span className="text-[9px] font-bold text-red-400 uppercase tracking-tighter">Units Required</span>
                                                 </div>
-                                            ) : (
-                                                <button onClick={() => startEditing(item)} className="text-gray-400 hover:text-blue-600 transition-colors" title="Edit Price">
-                                                    <PencilIcon className="h-4 w-4"/>
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                <span className="bg-red-600 text-white text-[10px] font-black px-2.5 py-1 rounded uppercase shadow-sm">Urgent Procure</span>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
-                <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex justify-between items-center">
-                    <span>Showing {filteredInventory.length} items</span>
+                <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase flex justify-between items-center tracking-widest">
+                    <span>{activeTab === 'mapping' ? `Total Mappings: ${filteredInventory.length}` : `Pending Shortfalls: ${filteredShortfall.length} SKUs`}</span>
                     <span>Last Synced: {new Date().toLocaleTimeString()}</span>
                 </div>
             </div>

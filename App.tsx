@@ -199,7 +199,7 @@ const App: React.FC = () => {
             );
         case 'File Uploader':
             return <FileUploader currentUser={currentUser} addLog={addLog} addNotification={addNotification} />;
-        case 'Inventory': return <InventoryManager addLog={addLog} inventoryItems={inventoryItems} setInventoryItems={setInventoryItems} onSync={() => refreshData(true)} isSyncing={isLoading} />;
+        case 'Inventory': return <InventoryManager addLog={addLog} inventoryItems={inventoryItems} purchaseOrders={purchaseOrders} setInventoryItems={setInventoryItems} onSync={() => refreshData(true)} isSyncing={isLoading} />;
         case 'Finance': return <FinanceManager purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} addLog={addLog} />;
         case 'Reports': return <ReportsManager purchaseOrders={purchaseOrders} inventoryItems={inventoryItems} />;
         case 'Appointments':
