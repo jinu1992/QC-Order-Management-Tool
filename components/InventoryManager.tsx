@@ -102,17 +102,17 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editPrice, setEditPrice] = useState<string>('');
 
-    // --- Aggregated Shortfall Logic (By Master SKU, only from New POs) ---
-    const shortfallData = useMemo(() => {
-        const skuMap: Record<string, { sku: string, itemName: string, stock: number, shortfall: number }> = {};
+    // --- Aggregated Shortfall Logic (By Master SKU, with Channel Columns) ---
+    const { shortfallData, shortfallChannels } = useMemo(() => {
+        const skuMap: Record<string, { sku: string, itemName: string, stock: number, totalShortfall: number, channelShortfalls: Record<string, number> }> = {};
+        const channelsWithShortfall = new Set<string>();
         
         // 1. Initialize with current inventory stock
         inventoryItems.forEach(item => {
             const sku = String(item.sku).trim();
             if (!skuMap[sku]) {
-                skuMap[sku] = { sku, itemName: item.itemName, stock: item.stock, shortfall: 0 };
+                skuMap[sku] = { sku, itemName: item.itemName, stock: item.stock, totalShortfall: 0, channelShortfalls: {} };
             } else {
-                // Take highest reported stock for the master SKU across channels
                 skuMap[sku].stock = Math.max(skuMap[sku].stock, item.stock);
                 if (item.itemName && item.itemName !== 'Syncing...') skuMap[sku].itemName = item.itemName;
             }
@@ -125,28 +125,32 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
             if (!newPOStatuses.includes(po.status)) return;
             
             (po.items || []).forEach(item => {
-                // Shortfall is only for items NOT yet pushed and NOT cancelled
                 if (!item.eeOrderRefId && (item.itemStatus || '').toLowerCase() !== 'cancelled') {
                     const sku = String(item.masterSku || item.articleCode).trim();
                     const shortfall = Math.max(0, (item.qty || 0) - (item.fulfillableQty || 0));
                     
                     if (shortfall > 0) {
+                        const channel = po.channel || 'Unknown';
+                        channelsWithShortfall.add(channel);
+
                         if (!skuMap[sku]) {
-                            skuMap[sku] = { sku, itemName: item.itemName || 'Unknown Item', stock: 0, shortfall: 0 };
+                            skuMap[sku] = { sku, itemName: item.itemName || 'Unknown Item', stock: 0, totalShortfall: 0, channelShortfalls: {} };
                         }
-                        skuMap[sku].shortfall += shortfall;
+                        skuMap[sku].totalShortfall += shortfall;
+                        skuMap[sku].channelShortfalls[channel] = (skuMap[sku].channelShortfalls[channel] || 0) + shortfall;
                     }
                 }
             });
         });
 
-        return Object.values(skuMap).filter(item => item.shortfall > 0).sort((a, b) => b.shortfall - a.shortfall);
+        const data = Object.values(skuMap).filter(item => item.totalShortfall > 0).sort((a, b) => b.totalShortfall - a.totalShortfall);
+        return { shortfallData: data, shortfallChannels: Array.from(channelsWithShortfall).sort() };
     }, [inventoryItems, purchaseOrders]);
 
     const inventoryStats = useMemo(() => {
         const totalMappings = inventoryItems.length;
         const lowStockCount = inventoryItems.filter(i => i.stock < 50).length;
-        const totalShortfallUnits = shortfallData.reduce((acc, item) => acc + item.shortfall, 0);
+        const totalShortfallUnits = shortfallData.reduce((acc, item) => acc + item.totalShortfall, 0);
         const shortfallSkus = shortfallData.length;
 
         return { totalMappings, lowStockCount, totalShortfallUnits, shortfallSkus };
@@ -397,38 +401,49 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
                             </tbody>
                         </table>
                     ) : (
-                        // Shortfall Analysis Table (Channel-Agnostic, Aggregated)
+                        // Shortfall Analysis Table (Dynamic Channel Columns)
                         <table className="w-full text-sm text-left text-gray-600">
                             <thead className="text-[11px] text-gray-400 uppercase bg-gray-50 border-b border-gray-200 font-bold tracking-wider">
                                 <tr>
-                                    <th scope="col" className="px-6 py-4">Master SKU</th>
+                                    <th scope="col" className="px-6 py-4 sticky left-0 bg-gray-50 z-10">Master SKU</th>
                                     <th scope="col" className="px-6 py-4">Item Name</th>
                                     <th scope="col" className="px-6 py-4 text-right">Available Stock</th>
-                                    <th scope="col" className="px-6 py-4 text-right text-red-600">Total Shortfall</th>
-                                    <th scope="col" className="px-6 py-4 text-center">Status</th>
+                                    {shortfallChannels.map(channel => (
+                                        <th key={channel} scope="col" className="px-4 py-4 text-center border-l border-gray-100 bg-gray-50/50">{channel}</th>
+                                    ))}
+                                    <th scope="col" className="px-6 py-4 text-right text-red-600 border-l border-gray-100 bg-red-50/30">Total Shortfall</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {filteredShortfall.length === 0 ? (
-                                    <tr><td colSpan={5} className="px-6 py-20 text-center text-gray-500 italic flex flex-col items-center gap-2"><CheckCircleIcon className="h-10 w-10 text-emerald-500" /><p>No shortfall detected in new purchase orders.</p></td></tr>
+                                    <tr><td colSpan={4 + shortfallChannels.length} className="px-6 py-20 text-center text-gray-500 italic flex flex-col items-center gap-2"><CheckCircleIcon className="h-10 w-10 text-emerald-500" /><p>No shortfall detected in new purchase orders.</p></td></tr>
                                 ) : (
                                     filteredShortfall.map((item, idx) => (
-                                        <tr key={idx} className="hover:bg-red-50/10 transition-colors border-l-4 border-l-red-100">
-                                            <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-900">{item.sku}</td>
+                                        <tr key={idx} className="hover:bg-red-50/10 transition-colors">
+                                            <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-900 sticky left-0 bg-white z-10 group-hover:bg-gray-50 border-r border-gray-50">{item.sku}</td>
                                             <td className="px-6 py-4">
                                                 <div className="text-sm font-medium text-gray-900 line-clamp-1">{item.itemName}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right">
                                                 <span className={`font-bold ${item.stock <= 0 ? 'text-red-500' : 'text-gray-700'}`}>{item.stock}</span>
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                                            {shortfallChannels.map(channel => {
+                                                const val = item.channelShortfalls[channel] || 0;
+                                                return (
+                                                    <td key={channel} className="px-4 py-4 text-center border-l border-gray-50 whitespace-nowrap">
+                                                        {val > 0 ? (
+                                                            <span className="text-red-500 font-bold">{val}</span>
+                                                        ) : (
+                                                            <span className="text-gray-300">-</span>
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
+                                            <td className="px-6 py-4 whitespace-nowrap text-right border-l border-red-50 bg-red-50/10">
                                                 <div className="flex flex-col items-end">
-                                                    <span className="font-black text-red-600 text-base">{item.shortfall}</span>
-                                                    <span className="text-[9px] font-bold text-red-400 uppercase tracking-tighter">Units Required</span>
+                                                    <span className="font-black text-red-600 text-base">{item.totalShortfall}</span>
+                                                    <span className="text-[8px] font-bold text-red-400 uppercase tracking-tighter">Units Needed</span>
                                                 </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <span className="bg-red-600 text-white text-[10px] font-black px-2.5 py-1 rounded uppercase shadow-sm">Urgent Procure</span>
                                             </td>
                                         </tr>
                                     ))
