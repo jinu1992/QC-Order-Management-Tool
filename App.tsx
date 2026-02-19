@@ -32,6 +32,7 @@ const App: React.FC = () => {
 
   const [activeView, setActiveView] = useState<ViewType>('Dashboard');
   const [activeFilter, setActiveFilter] = useState('New POs');
+  const [activeInventoryTab, setActiveInventoryTab] = useState<'mapping' | 'shortfall'>('mapping');
   const [adminTab, setAdminTab] = useState<'users' | 'roles' | 'channels' | 'integrations' | 'logs'>('users');
   
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
@@ -141,8 +142,22 @@ const App: React.FC = () => {
     }).length;
     const pushed = purchaseOrders.filter(p => getCalculatedStatus(p) === POStatus.Pushed).length;
     const partiallyPushed = purchaseOrders.filter(p => getCalculatedStatus(p) === POStatus.PartiallyProcessed).length;
+    
+    // Calculate total shortfall units for the new card
+    let totalShortfall = 0;
+    const newPOStatuses = [POStatus.NewPO, POStatus.WaitingForConfirmation, POStatus.ConfirmedToSend];
+    purchaseOrders.forEach(po => {
+        if (!newPOStatuses.includes(po.status)) return;
+        (po.items || []).forEach(item => {
+            if (!item.eeOrderRefId && (item.itemStatus || '').toLowerCase() !== 'cancelled') {
+                totalShortfall += Math.max(0, (item.qty || 0) - (item.fulfillableQty || 0));
+            }
+        });
+    });
+
     return [
       { title: 'Total Active POs', value: totalActiveCount.toString(), changeText: 'Across all stages', color: 'blue', targetView: 'Purchase Orders', targetFilter: 'All POs' },
+      { title: 'Procurement Shortfall', value: totalShortfall.toString(), changeText: 'Units needed for New POs', color: 'red', targetView: 'Inventory', targetTab: 'shortfall' },
       { title: 'Fully Pushed', value: pushed.toString(), changeText: 'To EasyEcom', color: 'green', targetView: 'Purchase Orders', targetFilter: 'Pushed POs' },
       { title: 'Partially Pushed', value: partiallyPushed.toString(), changeText: 'Pending items', color: 'yellow', targetView: 'Purchase Orders', targetFilter: 'Partially Pushed POs' },
     ];
@@ -161,10 +176,11 @@ const App: React.FC = () => {
     return counts;
   }, [purchaseOrders]);
   
-  const handleCardClick = (view: ViewType, filter?: string) => {
+  const handleCardClick = (view: ViewType, filter?: string, tab?: 'mapping' | 'shortfall') => {
       if (currentUser && rolePermissions[currentUser.role]?.includes(view)) {
           setActiveView(view);
           if (filter) setActiveFilter(filter);
+          if (tab) setActiveInventoryTab(tab);
       } else {
           addNotification(`Access Denied.`, 'error');
       }
@@ -186,7 +202,7 @@ const App: React.FC = () => {
                 <div className="p-4 sm:p-6 lg:p-8 flex-1">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                         {summaryData.map((card, index) => (
-                            <SummaryCard key={index} {...card as any} onClick={() => handleCardClick(card.targetView as ViewType, card.targetFilter)} />
+                            <SummaryCard key={index} {...card as any} onClick={() => handleCardClick(card.targetView as ViewType, card.targetFilter, (card as any).targetTab)} />
                         ))}
                     </div>
                 </div>
@@ -199,7 +215,7 @@ const App: React.FC = () => {
             );
         case 'File Uploader':
             return <FileUploader currentUser={currentUser} addLog={addLog} addNotification={addNotification} />;
-        case 'Inventory': return <InventoryManager addLog={addLog} inventoryItems={inventoryItems} purchaseOrders={purchaseOrders} setInventoryItems={setInventoryItems} onSync={() => refreshData(true)} isSyncing={isLoading} />;
+        case 'Inventory': return <InventoryManager addLog={addLog} inventoryItems={inventoryItems} purchaseOrders={purchaseOrders} setInventoryItems={setInventoryItems} onSync={() => refreshData(true)} isSyncing={isLoading} activeTab={activeInventoryTab} setActiveTab={setActiveInventoryTab} />;
         case 'Finance': return <FinanceManager purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} addLog={addLog} />;
         case 'Reports': return <ReportsManager purchaseOrders={purchaseOrders} inventoryItems={inventoryItems} />;
         case 'Appointments':

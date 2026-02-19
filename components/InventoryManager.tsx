@@ -11,6 +11,8 @@ interface InventoryManagerProps {
     setInventoryItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>;
     onSync: () => void;
     isSyncing: boolean;
+    activeTab: 'mapping' | 'shortfall';
+    setActiveTab: (tab: 'mapping' | 'shortfall') => void;
 }
 
 const inputClassName = "mt-1 block w-full rounded-lg border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-partners-green focus:ring-partners-green sm:text-sm py-3 px-3";
@@ -91,8 +93,7 @@ const CreateItemModal = ({ onClose, onSave, uniqueChannels }: { onClose: () => v
     );
 };
 
-const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryItems, purchaseOrders, setInventoryItems, onSync, isSyncing }) => {
-    const [activeTab, setActiveTab] = useState<'mapping' | 'shortfall'>('mapping');
+const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryItems, purchaseOrders, setInventoryItems, onSync, isSyncing, activeTab, setActiveTab }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedChannel, setSelectedChannel] = useState<string>('All Channels');
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -113,6 +114,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
             if (!skuMap[sku]) {
                 skuMap[sku] = { sku, itemName: item.itemName, stock: item.stock, totalShortfall: 0, channelShortfalls: {} };
             } else {
+                // Take highest reported stock for the master SKU across channels
                 skuMap[sku].stock = Math.max(skuMap[sku].stock, item.stock);
                 if (item.itemName && item.itemName !== 'Syncing...') skuMap[sku].itemName = item.itemName;
             }

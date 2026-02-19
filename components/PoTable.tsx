@@ -101,12 +101,19 @@ const OrderRow: React.FC<OrderRowProps> = ({
     onCancelLineItem, cancellingLineItemId
 }) => {
     const poStatus = getCalculatedStatus(po);
-    const amountIncTax = po.amount * 1.05;
     const items = po.items || [];
     
+    // Filter active items (not cancelled)
+    const activeItems = useMemo(() => items.filter(i => (i.itemStatus || '').toLowerCase() !== 'cancelled'), [items]);
+    
+    // Sum active quantity and active amount
+    const activeTotalQty = useMemo(() => activeItems.reduce((sum, i) => sum + (i.qty || 0), 0), [activeItems]);
+    const activeAmount = useMemo(() => activeItems.reduce((sum, i) => sum + ((i.qty || 0) * (i.unitCost || 0)), 0), [activeItems]);
+    const amountIncTax = activeAmount * 1.05;
+    
     // Calculate Fulfillable Quantity
-    const totalFulfillable = items.reduce((sum, item) => sum + (item.fulfillableQty || 0), 0);
-    const isShortage = totalFulfillable < po.qty;
+    const totalFulfillable = activeItems.reduce((sum, item) => sum + (item.fulfillableQty || 0), 0);
+    const isShortage = totalFulfillable < activeTotalQty;
 
     // Logic: Show Fulfillable only for New POs and Partially Pushed POs
     const showFulfillable = [
@@ -209,7 +216,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                     <span className="text-gray-300 font-normal">/</span>
                                 </>
                             )}
-                            <span className="text-gray-900" title="Total PO Quantity">{po.qty}</span>
+                            <span className="text-gray-900" title="Total PO Quantity (Excl. Cancelled)">{activeTotalQty}</span>
                         </div>
                         <div className="text-[11px] font-bold text-gray-400">₹{amountIncTax.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
                     </div>
