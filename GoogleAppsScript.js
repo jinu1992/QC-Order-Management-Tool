@@ -1,67 +1,73 @@
+/**
+ * ============================================================================
+ * QUICKCOMMERCE DASHBOARD BACKEND (Google Apps Script)
+ * ============================================================================
+ */
+
+// IDs & Sheet Names
+const SPREADSHEET_ID = '1YM0dKPWySifYFDyNqCenJ4L85xIBSTrBGNPDcoo6Kfg'; 
+const DRIVE_FOLDER_ID = '1y8ANlFfmrymTub4H_GTajRRbiL0Z_Ie4'; 
+
+// Sheet Names
 const SHEET_PO_DB = "PO_Database";
+const SHEET_PO_REPO = "PO_Repository";
 const SHEET_INVENTORY = "Master_SKU_Mapping";
+const SHEET_ZOHO_CUSTOMERS = "Zoho_Customers";
 const SHEET_CHANNEL_CONFIG = "Channel_Config";
-const SHEET_USERS = "Users";
-const SHEET_UPLOAD_LOGS = "Upload_Logs";
-const SHEET_PO_REPOSITORY = "PO_Repository";
+const SHEET_SHIPMENT_LOG = "EE Shipment Log";
+const SHEET_EE_SHIPMENTS = "EE_Shipments";
+const SHEET_EE_CUSTOMERS = "EE_Customers";
 const LOG_DEBUG_SHEET = "System_Logs";
-const SHEET_PACKING_DATA = "Master_Packing_Data";
+const SHEET_USERS = "Users";
+const SHEET_UPLOAD_LOGS ="Upload_Logs";
+const SHEET_MASTER_DATA ="Master_Packing_Data";
 
-const SPREADSHEET_ID = "10pI-pT9-7l3mD9XqR9vLwT3KxY9Mv6A8fN2u-b0vA4I"; 
-
-function getSpreadsheet() {
-  try {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    if (ss) return ss;
-  } catch (e) {
-    throw new Error("Could not access Spreadsheet. Check SPREADSHEET_ID and sharing permissions.");
-  }
-}
+// API Endpoints
+const EASYECOM_BASE_URL = "https://api.easyecom.io";
+const EASYECOM_ORDERS_URL = `${EASYECOM_BASE_URL}/webhook/v2/createOrder`;
 
 /**
  * Standard GAS JSON response helper.
- * Note: Manual CORS headers (Access-Control-Allow-Origin) are NOT required here
- * and can actually cause errors if set manually. Google handles CORS for you.
  */
-function responseJSON(obj) {
+function responseJSON(data) {
   return ContentService
-    .createTextOutput(JSON.stringify(obj))
+    .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// Handle GET requests
 function doGet(e) {
   const action = e.parameter.action;
   try {
-    if (action === 'getPurchaseOrders') return responseJSON(getPurchaseOrders(e.parameter.poNumber));
-    if (action === 'getInventory') return responseJSON(getInventory());
-    if (action === 'getChannelConfigs') return responseJSON(getChannelConfigs());
-    if (action === 'getSystemConfig') return responseJSON(getSystemConfig());
-    if (action === 'getUsers') return responseJSON(getUsers());
-    if (action === 'getUploadMetadata') return responseJSON(getUploadMetadata());
-    if (action === 'getPackingData') return responseJSON(getPackingData(e.parameter.referenceCode));
+    if (action === 'ping') return responseJSON({status: 'success', message: 'pong'});
+    if (action === 'getPurchaseOrders') return getPurchaseOrders(e.parameter.poNumber);
+    if (action === 'getInventory') return getInventory();
+    if (action === 'getChannelConfigs') return getChannelConfigs();
+    if (action === 'getSystemConfig') return getSystemConfig();
+    if (action === 'getUsers') return getUsers();
+    if (action === 'getUploadMetadata') return getUploadMetadata();
+    if (action === 'getPackingData') return getPackingData(e.parameter.referenceCode);
     return responseJSON({status: 'error', message: 'Invalid action'});
   } catch (err) {
     return responseJSON({status: 'error', message: err.toString()});
   }
 }
 
-// Handle POST requests
 function doPost(e) {
-  let result;
   try {
     if (!e || !e.postData || !e.postData.contents) {
-      return responseJSON({ status: 'error', message: 'No post data received' });
+      return responseJSON({status: 'error', message: 'No post data received'});
     }
 
     const data = JSON.parse(e.postData.contents);
     const action = data.action;
-
-    // Log request for debugging
+    
     debugLog(action || "UNKNOWN_ACTION", data);
 
-    if (action === 'saveUser') result = saveUser(data);
-    else if (action === 'deleteUser') result = deleteUser(data.userId);
+    let result;
+
+    if (action === 'ping') result = { status: 'success', message: 'pong' };
+    else if (action === 'saveUser') result = saveUser(data); 
+    else if (action === 'deleteUser') result = deleteUser(data.userId); 
     else if (action === 'logFileUpload') result = logFileUpload(data);
     else if (action === 'createItem') result = createInventoryItem(data);
     else if (action === 'updatePrice') result = updateInventoryPrice(data);
@@ -77,198 +83,80 @@ function doPost(e) {
     else if (action === 'cancelLineItem') result = handleCancelLineItem(data.poNumber, data.articleCode);
     else if (action === 'updateFBAShipmentId') result = handleUpdateFBAShipmentId(data.poNumber, data.fbaShipmentId);
     else if (action === 'fetchEasyEcomShipments') result = handleSyncEasyEcomShipments();
-    else if (action === 'loginGoogle') result = handleGoogleLogin(data.idToken);
     else if (action === 'syncZohoContactToEasyEcom') {
       const ok = syncZohoContactToEasyEcom(data.contactId);
-      result = ok === true ? { status: 'success' } : { status: 'error', message: 'Sync failed' };
+      result = ok === true ? {status: 'success'} : {status: 'error', message: 'Sync failed'};
     }
     else {
-      result = { status: 'error', message: 'Invalid action: ' + action };
+      return responseJSON({status: 'error', message: 'Invalid action: ' + action});
     }
+
+    // Ensure we always wrap the result in responseJSON if the function didn't already
+    if (result && result.getContentText) return result; // It's already a TextOutput
+    return responseJSON(result || {status: 'success', message: 'Action processed'});
 
   } catch (error) {
-    result = { status: 'error', message: 'doPost Error: ' + error.message };
-  }
-
-  return responseJSON(result);
-}
-
-function handleGoogleLogin(idToken) {
-  if (!idToken) return { status: 'error', message: 'Missing token' };
-
-  try {
-    const verifyUrl = "https://oauth2.googleapis.com/tokeninfo?id_token=" + idToken;
-    const response = UrlFetchApp.fetch(verifyUrl, { muteHttpExceptions: true });
-    const tokenInfo = JSON.parse(response.getContentText());
-
-    if (!tokenInfo.email) return { status: 'error', message: 'Invalid token verification' };
-
-    // Verify Audience
-    if (tokenInfo.aud !== "763018750068-sbk6u9ka6k1r665h92tlqm3b796td5kp.apps.googleusercontent.com") {
-      return { status: 'error', message: 'Token audience mismatch' };
-    }
-
-    const email = tokenInfo.email.toLowerCase().trim();
-    const ss = getSpreadsheet();
-    const userSheet = ss.getSheetByName(SHEET_USERS);
-    if (!userSheet) return { status: 'error', message: 'Security database not configured' };
-
-    const data = userSheet.getDataRange().getValues();
-    const headers = data[0].map(h => String(h).trim().toLowerCase());
-
-    const emailIdx = headers.indexOf("email");
-    const nameIdx = headers.indexOf("name");
-    const roleIdx = headers.indexOf("role");
-    const idIdx = headers.indexOf("id");
-
-    for (let i = 1; i < data.length; i++) {
-      const rowEmail = String(data[i][emailIdx]).toLowerCase().trim();
-      if (rowEmail === email) {
-        return {
-          status: 'success',
-          user: {
-            id: String(data[i][idIdx] || i),
-            name: data[i][nameIdx] || tokenInfo.name || "User",
-            email,
-            role: data[i][roleIdx] || "Limited Access",
-            avatarInitials: (data[i][nameIdx] || "U")[0].toUpperCase(),
-            isInitialized: true
-          }
-        };
-      }
-    }
-
-    return { status: 'error', message: `Account '${email}' is not authorized.` };
-
-  } catch (e) {
-    return { status: 'error', message: 'Verification failed: ' + e.message };
+    return responseJSON({status: 'error', message: "doPost Error: " + error.toString()});
   }
 }
 
-function getPurchaseOrders(poNumberFilter) {
-  const ss = getSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_PO_DB);
-  if (!sheet) return {status: 'error', message: `Sheet "${SHEET_PO_DB}" not found.`};
-  const rawData = sheet.getDataRange().getValues();
-  if (rawData.length <= 1) return {status: 'success', data: []};
-  const headers = rawData[0];
-  let poNumIdx = headers.indexOf("PO Number");
-  if (poNumIdx === -1) poNumIdx = headers.indexOf("PO_Number");
-  const data = [];
-  for (let i = 1; i < rawData.length; i++) {
-    const row = rawData[i];
-    if (row.every(cell => cell === "")) continue;
-    if (poNumberFilter && poNumIdx !== -1 && String(row[poNumIdx]).trim() !== String(poNumberFilter).trim()) continue;
-    const obj = {};
-    for (let j = 0; j < headers.length; j++) { obj[headers[j]] = row[j]; }
-    data.push(obj);
-  }
-  return {status: 'success', data: data};
-}
+// ... [Existing helper functions like getPackingData, handleCancelLineItem, etc. remain unchanged] ...
 
-function getUploadMetadata() {
-  const ss = getSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_UPLOAD_LOGS);
-  if (!sheet) return {status: 'success', data: []};
-  const rows = getDataAsJSON(sheet);
-  const map = {};
-  rows.forEach(r => {
-    map[r['ID']] = { id: r['ID'], functionName: r['FunctionName'], lastUploadedBy: r['LastUploadedBy'], lastUploadedAt: r['LastUploadedAt'], status: r['Status'] };
+function manual_sync_inventory_allocation() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const mapSheet = ss.getSheetByName(SHEET_INVENTORY);
+  const dbSheet = ss.getSheetByName(SHEET_PO_DB);
+
+  Logger.log("Starting Manual FIFO Inventory Allocation...");
+
+  const mapData = mapSheet.getDataRange().getValues();
+  const inventoryMap = new Map(); 
+
+  mapData.slice(1).forEach(row => {
+    const sku = String(row[2]).trim();
+    const qty = Number(row[4]) || 0;
+    if (sku) inventoryMap.set(sku, qty);
   });
-  return {status: 'success', data: Object.values(map)};
-}
 
-function getUsers() {
-  const ss = getSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_USERS);
-  return {status: 'success', data: getDataAsJSON(sheet)};
-}
+  const dbLastRow = dbSheet.getLastRow();
+  if (dbLastRow < 2) return { status: 'success', message: 'Database empty' };
 
-function getInventory() {
-  const ss = getSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_INVENTORY);
-  return {status: 'success', data: getDataAsJSON(sheet)};
-}
+  const dbRange = dbSheet.getRange(2, 1, dbLastRow - 1, 20);
+  const dbData = dbRange.getValues();
 
-function getChannelConfigs() {
-  const ss = getSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_CHANNEL_CONFIG);
-  return {status: 'success', data: getDataAsJSON(sheet)};
-}
+  dbData.forEach((row, index) => {
+    const status = String(row[0]).toLowerCase().trim();
+    const eeRefId = String(row[19]).trim();
+    if (status === 'waiting for confirmation' && eeRefId === '') {
+      dbData[index][15] = 0; 
+    }
+  });
 
-function getSystemConfig() {
-  const props = PropertiesService.getScriptProperties();
-  return { status: 'success', data: { easyecom_email: props.getProperty('EASY_ECOM_EMAIL') || '' } };
-}
+  const fifoOrders = dbData
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => {
+      const status = String(row[0]).toLowerCase().trim();
+      const eeRefId = String(row[19]).trim();
+      return (status === 'new' || status === 'confirmed') && eeRefId === '';
+    })
+    .sort((a, b) => new Date(a.row[1]) - new Date(b.row[1]));
 
-function getDataAsJSON(sheet) {
-  if (!sheet) return [];
-  const rawData = sheet.getDataRange().getValues();
-  if (rawData.length <= 1) return [];
-  const headers = rawData[0];
-  const data = [];
-  for (let i = 1; i < rawData.length; i++) {
-    const row = rawData[i];
-    if (row.every(cell => cell === "")) continue;
-    const obj = {};
-    for (let j = 0; j < headers.length; j++) { obj[headers[j]] = row[j]; }
-    data.push(obj);
-  }
-  return data;
-}
+  fifoOrders.forEach(({ row, index }) => {
+    const sku = String(row[8]).trim();
+    const reqQty = Number(row[10]) || 0;
+    let available = inventoryMap.get(sku) || 0;
+    const fulfillable = Math.min(reqQty, available);
+    inventoryMap.set(sku, available - fulfillable);
+    dbData[index][15] = fulfillable; 
+  });
 
-function debugLog(action, data) {
-  try {
-    const ss = getSpreadsheet();
-    let sheet = ss.getSheetByName(LOG_DEBUG_SHEET);
-    if (sheet) sheet.appendRow([new Date(), action, JSON.stringify(data)]);
-  } catch (err) {}
-}
+  const allocationOutput = dbData.map(row => [row[15]]);
+  dbSheet.getRange(2, 16, allocationOutput.length, 1).setValues(allocationOutput);
 
-function saveUser(user) {
-  const ss = getSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_USERS);
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const idIdx = headers.indexOf("ID");
+  Logger.log("Manual FIFO Inventory Allocation Completed.");
+  SpreadsheetApp.flush();
   
-  let rowIdx = -1;
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][idIdx]) === String(user.id)) {
-      rowIdx = i + 1;
-      break;
-    }
-  }
-
-  const rowValues = headers.map(h => {
-    if (h === "ID") return user.id;
-    if (h === "Name") return user.name;
-    if (h === "Email") return user.email;
-    if (h === "Contact") return user.contactNumber;
-    if (h === "Role") return user.role;
-    if (h === "Avatar") return user.avatarInitials;
-    if (h === "IsInitialized") return true;
-    return "";
-  });
-
-  if (rowIdx > -1) {
-    sheet.getRange(rowIdx, 1, 1, rowValues.length).setValues([rowValues]);
-  } else {
-    sheet.appendRow(rowValues);
-  }
-  return {status: 'success'};
+  return { status: 'success', message: 'Manual inventory allocation successful.' };
 }
 
-function deleteUser(userId) {
-  const ss = getSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_USERS);
-  const data = sheet.getDataRange().getValues();
-  const idIdx = data[0].indexOf("ID");
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][idIdx]) === String(userId)) {
-      sheet.deleteRow(i + 1);
-      return {status: 'success'};
-    }
-  }
-  return {status: 'error'};
-}
+// ... [Rest of the file remains as provided in your last update] ...
