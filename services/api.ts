@@ -36,7 +36,7 @@ const postToScript = async (payload: any) => {
         try {
             result = JSON.parse(text);
         } catch (e) {
-            console.error("[API-ERROR] Failed to parse JSON response:", text);
+            console.log("[API-WARN] Non-JSON response:", text);
             // If the backend returned a string instead of JSON, but the request was successful
             if (text.toLowerCase().includes('success') || text.toLowerCase().includes('ok')) {
                 return { status: 'success', message: 'Action completed successfully.' };
@@ -159,6 +159,10 @@ export const fetchInventoryFromSheet = async (): Promise<InventoryItem[]> => {
 
 export const syncInventoryFromEasyEcom = async (): Promise<{status: string, message?: string}> => {
     return await postToScript({ action: 'syncInventory' });
+};
+
+export const manualInventoryAllocation = async (): Promise<{status: string, message?: string}> => {
+    return await postToScript({ action: 'manual_sync_inventory_allocation' });
 };
 
 export const fetchPurchaseOrders = async (poNumber?: string): Promise<PurchaseOrder[]> => {

@@ -21,7 +21,7 @@ import {
     SortIcon,
     ClockIcon
 } from './icons/Icons';
-import { pushToEasyEcom, requestZohoSync, syncZohoContacts, updatePOStatus, fetchPurchaseOrder, syncSinglePO, cancelPOLineItem } from '../services/api';
+import { pushToEasyEcom, requestZohoSync, syncZohoContacts, updatePOStatus, fetchPurchaseOrder, syncSinglePO, cancelPOLineItem, manualInventoryAllocation } from '../services/api';
 
 // --- Utilities ---
 
@@ -421,7 +421,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
                                                             {isPushed ? (
                                                                 <span className="text-[9px] font-bold text-green-700 bg-green-100/50 px-2 py-0.5 rounded border border-green-200 uppercase">Pushed</span>
                                                             ) : isCancelled ? (
-                                                                <span className="text-[9px] font-bold text-red-700 bg-red-100/50 px-2 py-0.5 rounded border border-red-200 uppercase">Cancelled</span>
+                                                                <span className="text-[9px] font-bold text-red-700 bg-red-100/50 px-2 py-0.5 rounded border border-green-200 uppercase">Cancelled</span>
                                                             ) : poStatus === POStatus.Cancelled ? (
                                                                 <span className="text-[9px] font-bold text-red-700 uppercase">Cancelled</span>
                                                             ) : poStatus === POStatus.BelowThreshold ? (
@@ -518,6 +518,7 @@ const PoTable: React.FC<PoTableProps> = ({
     const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
     const [refreshingPoId, setRefreshingPoId] = useState<string | null>(null);
     const [cancellingLineItemId, setCancellingLineItemId] = useState<string | null>(null);
+    const [isAllocating, setIsAllocating] = useState(false);
 
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
     const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
@@ -675,7 +676,7 @@ const PoTable: React.FC<PoTableProps> = ({
         }
     };
 
-    const handleSyncZohoAction = async (po: PurchaseOrder) => {
+    const handleSyncZohoContactsAction = async (po: PurchaseOrder) => {
         setSyncingZohoId(po.id);
         try {
             const res = await syncZohoContacts();
@@ -749,6 +750,25 @@ const PoTable: React.FC<PoTableProps> = ({
         finally { setUpdatingStatusId(null); }
     };
 
+    const handleManualAllocation = async () => {
+        setIsAllocating(true);
+        addNotification('Triggering manual inventory allocation...', 'info');
+        try {
+            const res = await manualInventoryAllocation();
+            if (res.status === 'success') {
+                addNotification(res.message || 'Inventory allocated successfully.', 'success');
+                addLog('Inventory Allocation', 'Manual allocation triggered for New POs.');
+                onSync(); // Refresh global data to update fulfillment numbers
+            } else {
+                addNotification('Allocation Failed: ' + (res.message || 'Unknown error'), 'error');
+            }
+        } catch (e) {
+            addNotification('Network error during allocation.', 'error');
+        } finally {
+            setIsAllocating(false);
+        }
+    };
+
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
@@ -763,9 +783,22 @@ const PoTable: React.FC<PoTableProps> = ({
                         </button>
                     ))}
                 </div>
-                <button type="button" onClick={onSync} disabled={isSyncing} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 active:scale-95 transition-all">
-                    <CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} /> Sync All Data
-                </button>
+                <div className="flex items-center gap-2">
+                    {activeFilter === 'New POs' && (
+                        <button 
+                            type="button" 
+                            onClick={handleManualAllocation} 
+                            disabled={isAllocating || isSyncing} 
+                            className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg shadow-sm hover:bg-emerald-100 active:scale-95 transition-all"
+                        >
+                            <CubeIcon className={`h-4 w-4 ${isAllocating ? 'animate-pulse' : ''}`} /> 
+                            {isAllocating ? 'Allocating...' : 'Allocate Inventory'}
+                        </button>
+                    )}
+                    <button type="button" onClick={onSync} disabled={isSyncing} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 active:scale-95 transition-all">
+                        <CloudDownloadIcon className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} /> Sync All Data
+                    </button>
+                </div>
             </div>
 
             <div className="mt-6 overflow-x-auto border border-gray-100 rounded-xl shadow-inner max-h-[70vh]">
@@ -818,7 +851,7 @@ const PoTable: React.FC<PoTableProps> = ({
                                     isPushing={!!pushingToEasyEcom[po.id]}
                                     onPush={() => handlePushAction(po)}
                                     isSyncingZoho={syncingZohoId === po.id}
-                                    onSyncZoho={() => handleSyncZohoAction(po)}
+                                    onSyncZoho={() => handleSyncZohoContactsAction(po)}
                                     isSyncingEE={syncingEEId === po.id}
                                     onSyncEE={() => handleSyncEEAction(po)}
                                     onTrackNotify={() => addNotification('Navigate to Sales Orders to track fulfillment.', 'info')}

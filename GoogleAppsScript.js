@@ -73,6 +73,7 @@ function doPost(e) {
     else if (action === 'updatePOStatus') result = updatePOStatus(data.poNumber, data.status);
     else if (action === 'syncZohoContacts') result = handleSyncZohoContacts();
     else if (action === 'syncInventory') result = handleSyncInventory();
+    else if (action === 'manual_sync_inventory_allocation') result = manual_sync_inventory_allocation();
     else if (action === 'cancelLineItem') result = handleCancelLineItem(data.poNumber, data.articleCode);
     else if (action === 'updateFBAShipmentId') result = handleUpdateFBAShipmentId(data.poNumber, data.fbaShipmentId);
     else if (action === 'fetchEasyEcomShipments') result = handleSyncEasyEcomShipments();
