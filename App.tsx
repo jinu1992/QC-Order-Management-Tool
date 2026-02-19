@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -223,7 +224,18 @@ const App: React.FC = () => {
         case 'Sales Orders':
              return (
                 <div className="p-4 sm:p-6 lg:p-8 flex-1">
-                    <SalesOrderTable activeFilter={activeFilter} setActiveFilter={setActiveFilter} purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} tabCounts={tabCounts} addLog={addLog} addNotification={addNotification} onSync={() => refreshData(true)} isSyncing={isLoading} />
+                    <SalesOrderTable 
+                        activeFilter={activeFilter} 
+                        setActiveFilter={setActiveFilter} 
+                        purchaseOrders={purchaseOrders} 
+                        setPurchaseOrders={setPurchaseOrders} 
+                        tabCounts={tabCounts} 
+                        addLog={addLog} 
+                        addNotification={addNotification} 
+                        onSync={() => refreshData(true)} 
+                        isSyncing={isLoading} 
+                        inventoryItems={inventoryItems} 
+                    />
                 </div>
             );
         case 'Admin': return (

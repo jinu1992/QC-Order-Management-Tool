@@ -1,3 +1,4 @@
+
 import React, { useState, Fragment, useMemo, FC, useRef, useEffect } from 'react';
 import { type PurchaseOrder, type InventoryItem, POItem } from '../types';
 import { 
@@ -26,7 +27,8 @@ import {
     ClockIcon,
     PrinterIcon,
     AlertIcon,
-    QuestionMarkCircleIcon
+    QuestionMarkCircleIcon,
+    DownloadIcon
 } from './icons/Icons';
 import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO, fetchPackingData, updateFBAShipmentId, syncEasyEcomShipments } from '../services/api';
 import AppointmentPass from './AppointmentPass';
@@ -96,13 +98,11 @@ const formatDisplayTime = (timeInput?: any): string => {
     
     const timeStr = String(timeInput).trim();
     
-    // If it's already in AM/PM format, return it
     if (timeStr.toUpperCase().includes('AM') || timeStr.toUpperCase().includes('PM')) {
         return timeStr;
     }
     
     try {
-        // Check if it's a full ISO string or Date-like string first
         if (timeStr.includes('T') || timeStr.includes('GMT') || (timeStr.length > 12 && timeStr.includes('-'))) {
             const dateObj = new Date(timeStr);
             if (!isNaN(dateObj.getTime())) {
@@ -111,17 +111,15 @@ const formatDisplayTime = (timeInput?: any): string => {
             }
         }
 
-        // Handle HH:MM:SS or HH:MM format
         const parts = timeStr.match(/(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
         if (parts) {
             let hours = parseInt(parts[1], 10);
             const minutes = parts[2].padStart(2, '0');
             
-            // Check for valid time components
             if (hours >= 0 && hours < 24) {
                 const ampm = hours >= 12 ? 'PM' : 'AM';
                 hours = hours % 12;
-                hours = hours ? hours : 12; // the hour '0' should be '12'
+                hours = hours ? hours : 12;
                 const formatted = `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
                 return formatted;
             }
@@ -206,7 +204,6 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
         load();
     }, [so.id]);
 
-    // Group items by Box ID, Map SKU to Item Code, and CONSOLIDATE QUANTITIES
     const groupedBoxes: Record<string, any[]> = useMemo(() => {
         const boxes: Record<string, any[]> = {};
         
@@ -214,13 +211,11 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
             const boxId = String(row['Box ID'] || 'UNKNOWN').trim();
             if (!boxes[boxId]) boxes[boxId] = [];
             
-            // Map Master SKU from packing data to Item Code (articleCode) from PO Items
             const masterSku = String(row['SKU']).trim();
             const poItem = so.items.find(i => String(i.masterSku).trim() === masterSku || String(i.articleCode).trim() === masterSku);
             const itemCode = poItem?.articleCode || masterSku;
             const quantity = Number(row['Item Quantity'] || 0);
 
-            // Consolidate logic: Check if this itemCode already exists in this specific box
             const existingItem = (boxes[boxId] as any[]).find(item => item.itemCode === itemCode);
             
             if (existingItem) {
@@ -261,12 +256,6 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
                             body { margin: 0; -webkit-print-color-adjust: exact; color: black; }
                             .page-break { page-break-after: always; }
                         }
-                        .label-container {
-                            width: 4in; height: 6in; padding: 0.25in; box-sizing: border-box; display: flex; flex-direction: column; background: white; font-family: sans-serif; color: black;
-                        }
-                        .item-table th, .item-table td {
-                            text-align: left; padding: 3pt 0; border-bottom: 0.5pt solid #ddd;
-                        }
                     </style>
                 </head>
                 <body>
@@ -274,16 +263,13 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
 
         html += `
   <div class="min-h-screen p-6 font-mono page-break">
-    <!-- HEADER -->
     <div class=" border-b-2 border-black pb-2 mb-4">
       <p class="text-xl font-black uppercase">MASTER PACKING SLIP</p>
     </div>
-    <!-- PO / INVOICE -->
     <div class="space-y-4 mb-6">
       <div><p class="text-xs font-bold uppercase">PO Number</p><p class="text-3xl font-black uppercase">${so.poReference}</p></div>
       <div><p class="text-xs font-bold uppercase">Invoice No.</p><p class="text-3xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p></div>
     </div>
-    <!-- TOTALS -->
     <div class="border-t-2 border-black pt-4 space-y-4">
       <div><p class="text-xs font-bold uppercase">Total Box Count</p><p class="text-3xl font-black">${totalBoxes}</p></div>
       <div><p class="text-xs font-bold uppercase">SKU Count</p><p class="text-3xl font-black">${so.items.length}</p></div>
@@ -295,17 +281,14 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
 boxEntries.forEach(([boxId, items], idx) => {
   html += `
   <div class="min-h-screen p-6 font-mono ${idx < totalBoxes - 1 ? 'page-break' : ''}">
-    <!-- HEADER -->
     <div class="flex justify-between items-end gap-4 border-b-2 border-black pb-2 mb-4">
       <p class="text-xl font-black uppercase">Instamart Box Label</p>
       <p class="text-xl font-black text-right">BOX ${idx + 1}/${totalBoxes}</p>
     </div>
-    <!-- PO / INVOICE -->
     <div class="border-b-2 border-black pb-3 mb-4 space-y-3">
       <div><p class="text-xs font-bold uppercase">PO Number</p><p class="text-xl font-black uppercase">${so.poReference}</p></div>
       <div><p class="text-xs font-bold uppercase">Invoice No.</p><p class="text-xl font-black uppercase">${so.invoiceNumber || 'N/A'}</p></div>
     </div>
-    <!-- SKU DETAILS -->
     <div class="space-y-4 mb-4">
       ${items.map(item => `
         <div class="space-y-2">
@@ -316,7 +299,6 @@ boxEntries.forEach(([boxId, items], idx) => {
         </div>
       `).join('')}
     </div>
-    <!-- FOOTER -->
     <div class="grid grid-cols-2 gap-4 border-t-2 border-black pt-4">
       <div><p class="text-xs font-bold uppercase">Box ID</p><p class="text-lg font-bold">${boxId}</p></div>
       <div class="text-right"><p class="text-xs font-bold uppercase">Packing Date</p><p class="text-lg font-bold">${packingDate}</p></div>
@@ -638,7 +620,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 if (!rawRef || String(rawRef).trim() === "") return;
                 const refCode = String(rawRef).trim();
                 
-                // Strictly use shipped quantity as requested for totals
                 const effectiveQty = item.shippedQuantity || 0;
                 const effectiveLineAmount = effectiveQty * (item.unitCost || 0);
                 
@@ -651,7 +632,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                 const invNum = item.invoiceNumber;
                 const hasInvoice = !!invNum && invNum !== 'GENERATING...';
                 
-                // Exception rule: YEIO Store of Amazon_FBA does not require invoicing
                 const isAmazonFbaYeio = (po.channel.toLowerCase().includes('amazon_fba') || po.channel.toLowerCase().includes('amazon fba')) && 
                                         (po.storeCode.toUpperCase() === 'YEIO');
                 const statusHasInvoice = hasInvoice || isAmazonFbaYeio;
@@ -762,8 +742,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
         const results = Object.values(groups);
 
-        // Final safety check: if a group accumulated a status that physically progressed but lacks a valid invoiceNumber, force back to Batch Created
-        // Updated to exclude Amazon_FBA YEIO from this enforcement
         results.forEach(so => {
             const hasInvoice = !!so.invoiceNumber && so.invoiceNumber !== 'GENERATING...';
             const progressRequiringInvoice = ['Label Generated', 'Shipped', 'Delivered'].includes(so.status);
@@ -827,7 +805,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             if (res.status === 'success') {
                 addNotification(res.message || 'EasyEcom sync successful.', 'success');
                 addLog('EasyEcom Sync', 'Manual shipment fetch triggered.');
-                // Refresh local data from sheet
                 onSync();
             } else {
                 addNotification('Sync Failed: ' + (res.message || 'Unknown error'), 'error');
@@ -840,7 +817,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     };
 
     const handleCreateZohoInvoiceAction = async (eeRef: string, poRef: string, soObj?: GroupedSalesOrder) => {
-        // Amazon FBA Interception
         if (soObj && (soObj.channel.toLowerCase().includes('amazon_fba') || soObj.channel.toLowerCase().includes('amazon fba'))) {
             setFbaShipmentModal({ isOpen: true, so: soObj });
             return;
@@ -848,7 +824,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
         setIsCreatingInvoice(eeRef);
         
-        // Optimistic State Update: Move order to "Invoiced" (GENERATING) state immediately
         const parentPoNumbers = poRef.split(',').map(s => s.trim());
         setPurchaseOrders(prev => prev.map(po => {
             if (parentPoNumbers.includes(po.poNumber)) {
@@ -867,11 +842,9 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             if (res.status === 'success') {
                 addNotification(res.message || 'Invoice triggered successfully.', 'success');
                 addLog('Invoice Creation', `EE Ref: ${eeRef}`);
-                // Follow up with targeted refresh for full details
                 await refreshSingleSOState(poRef);
             } else {
                 addNotification('Error: ' + (res.message || 'Failed to trigger invoice generation.'), 'error');
-                // Revert optimistic state on failure
                 setPurchaseOrders(prev => prev.map(po => {
                     if (parentPoNumbers.includes(po.poNumber)) {
                         return {
@@ -897,7 +870,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
         setIsCreatingInvoice(so.id);
         
-        // Optimistic state for FBA
         const parentPoNumbers = so.poReference.split(',').map(s => s.trim());
         setPurchaseOrders(prev => prev.map(po => {
             if (parentPoNumbers.includes(po.poNumber)) {
@@ -913,18 +885,15 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         }));
 
         try {
-            // Step 1: Update FBA ID in Sheet
             const updateRes = await updateFBAShipmentId(so.poReference, fbaId);
             if (updateRes.status !== 'success') {
                 throw new Error(updateRes.message || "Failed to save FBA ID.");
             }
 
-            // Step 2: Proceed with Zoho Invoice
             const res = await createZohoInvoice(so.id);
             if (res.status === 'success') {
                 addNotification(res.message || 'FBA ID Saved & Invoice triggered.', 'success');
                 addLog('Amazon FBA Invoice', `FBA ID: ${fbaId}, Ref: ${so.id}`);
-                // Refresh full data
                 await refreshSingleSOState(so.poReference);
                 setFbaShipmentModal({ isOpen: false, so: null });
             } else {
@@ -940,7 +909,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     const handlePushToNimbusAction = async (eeRef: string, poRef: string) => {
         setIsPushingNimbus(eeRef);
         
-        // Optimistic update: Mark as "Label Generated" with syncing AWB
         const parentPoNumbers = poRef.split(',').map(s => s.trim());
         setPurchaseOrders(prev => prev.map(po => {
             if (parentPoNumbers.includes(po.poNumber)) {
@@ -960,11 +928,9 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             if (res.status === 'success') {
                 addNotification(res.message || 'Pushed to Nimbus successfully.', 'success');
                 addLog('Nimbus Shipping', `EE Ref: ${eeRef}`);
-                // Follow up with targeted refresh to get full tracking details from backend
                 await refreshSingleSOState(poRef);
             } else {
                 addNotification('Shipping Error: ' + (res.message || 'Failed to push to Nimbus.'), 'error');
-                // Revert optimistic update
                 setPurchaseOrders(prev => prev.map(po => {
                     if (parentPoNumbers.includes(po.poNumber)) {
                         return {
@@ -982,6 +948,59 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         } finally {
             setIsPushingNimbus(null);
         }
+    };
+
+    /**
+     * Special function for Flipkart Packing Slip CSV generation
+     */
+    const handleDownloadFlipkartPackingSlip = (so: GroupedSalesOrder) => {
+        if (!inventoryItems) {
+            addNotification('Inventory mappings not loaded.', 'error');
+            return;
+        }
+
+        const headers = ["FSN", "Article Code", "EAN Code", "MRP", "Size", "Qty", "Unit Price", "Tax %", "Invoice No", "PO No"];
+        const rows = so.items.map(item => {
+            // Locate the mapping based on SKU and Flipkart channel
+            const mapping = inventoryItems.find(inv => 
+                (inv.sku === item.masterSku || inv.articleCode === item.articleCode) && 
+                inv.channel.toLowerCase().includes('flipkart')
+            );
+
+            // Row construction based on specification
+            return [
+                mapping?.articleCode || '', // FSN is the Channel Item Code
+                mapping?.itemName || item.itemName || '', // Article Code is Itemname
+                mapping?.ean || '',
+                mapping?.mrp || 0,
+                mapping?.size || '',
+                item.shippedQuantity || item.itemQuantity || item.qty,
+                item.unitCost || 0,
+                "5", // Tax % hardcoded to 5
+                so.invoiceNumber || 'N/A',
+                so.poReference
+            ];
+        });
+
+        if (rows.length === 0) {
+            addNotification('No items found in this order.', 'warning');
+            return;
+        }
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Flipkart_PackingSlip_${so.id}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        addLog('CSV Download', `Downloaded Flipkart Packing Slip for ${so.id}`);
     };
 
     const TimelineStep = ({ label, date, icon, isLast = false }: { label: string, date?: string, icon: React.ReactNode, isLast?: boolean }) => {
@@ -1003,7 +1022,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         const isExecuting = isCreatingInvoice === so.id || isPushingNimbus === so.id;
         const eeStatusLower = so.originalEeStatus.toLowerCase().trim();
         
-        // Exclude Amazon_FBA YEIO from invoicing action
         const isAmazonFbaYeio = (so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba')) && 
                                 (so.storeCode.toUpperCase() === 'YEIO');
                                 
@@ -1012,7 +1030,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         if (canInvoice) return { label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', color: 'bg-purple-600 text-white hover:bg-purple-700', onClick: () => handleCreateZohoInvoiceAction(so.id, so.poReference, so), disabled: isExecuting };
         
         if (so.status === 'Invoiced' && !so.awb) {
-            // Box data check
             if (so.boxCount === 0) {
                 return { 
                     label: 'Box Data Missing', 
@@ -1156,13 +1173,17 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 const action = getPrimaryAction(so);
                                 const isRefreshing = isRefreshingSo === so.poReference;
                                 
-                                // Error proofing: Check if it's an Instamart order with box data
                                 const isInstamart = so.channel.toLowerCase().includes('instamart');
+                                const isFlipkart = so.channel.toLowerCase().includes('flipkart');
                                 const isBlinkit = so.channel.toLowerCase().includes('blinkit');
-                                const showPrintActionInRow = isInstamart && so.boxCount > 0 && (so.status === 'Invoiced' || so.status === 'Label Generated' || so.status === 'Shipped' || so.status === 'Delivered' || !!so.awb);
+                                
+                                const hasLabel = so.status === 'Label Generated' || so.status === 'Shipped' || so.status === 'Delivered' || !!so.awb;
+                                const showPrintActionInRow = isInstamart && so.boxCount > 0 && hasLabel;
+                                
+                                // Specific for Flipkart Minutes Packing Slip
+                                const showFlipkartDownload = isFlipkart && hasLabel;
 
-                                // Logic for Appointment Pass Button
-                                const showAppointmentBtn = (isBlinkit) && (so.status === 'Label Generated' || so.status === 'Shipped' || !!so.awb) && (so.status !== 'Delivered');
+                                const showAppointmentBtn = (isBlinkit) && hasLabel && (so.status !== 'Delivered');
                                 const hasAppointmentId = !!so.appointmentId;
 
                                 return (
@@ -1177,6 +1198,15 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                             <td className="px-6 py-4 whitespace-nowrap text-gray-400">{so.orderDate}</td>
                                             <td className="px-6 py-4 text-center sticky right-0 z-10 bg-inherit border-l border-gray-100 shadow-[-2px_0_4px_rgba(0,0,0,0.02)]" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex items-center justify-center gap-2">
+                                                    {showFlipkartDownload && (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleDownloadFlipkartPackingSlip(so); }}
+                                                            className="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 flex items-center gap-1.5"
+                                                            title="Download Flipkart Minutes CSV Packing Slip"
+                                                        >
+                                                            <DownloadIcon className="h-3.5 w-3.5" /> Packing Slip
+                                                        </button>
+                                                    )}
                                                     {showAppointmentBtn && (
                                                         <button 
                                                             onClick={(e) => { 
@@ -1265,6 +1295,14 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                             <div className="flex justify-between items-center mb-4">
                                                                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2"><GlobeIcon className="h-4 w-4 text-blue-600" /> Logistics & Shipment Status</h4>
                                                                 <div className="flex items-center gap-3">
+                                                                    {showFlipkartDownload && (
+                                                                        <button 
+                                                                            onClick={(e) => { e.stopPropagation(); handleDownloadFlipkartPackingSlip(so); }}
+                                                                            className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95"
+                                                                        >
+                                                                            <DownloadIcon className="h-4 w-4" /> Download Flipkart CSV Slip
+                                                                        </button>
+                                                                    )}
                                                                     {showAppointmentBtn && (
                                                                         <button 
                                                                             onClick={(e) => { 
@@ -1321,7 +1359,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                                                                 <div className={`p-4 rounded-xl border transition-all ${so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{so.boxCount || 0}</p></div></div></div>
                                                                 
-                                                                {/* Custom Blinkit-style Appointment Card */}
                                                                 <div className="p-4 bg-partners-light-blue rounded-xl border border-blue-100 flex flex-col">
                                                                     <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-3">Appointment Details</p>
                                                                     <div className="flex-1 flex flex-col justify-between space-y-3">
@@ -1394,7 +1431,6 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     );
 };
 
-// Internal Helper for Modal to avoid circular dependency
 const PortalHelperModal_ = PortalHelperModal;
 
 export default SalesOrderTable;

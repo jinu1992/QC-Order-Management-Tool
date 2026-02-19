@@ -8,17 +8,11 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbwBDSNnN_xKlZc4cTwwKthd
 
 /**
  * Shared helper for POST requests to Google Apps Script.
- * To avoid CORS 'Failed to fetch' errors:
- * 1. Do NOT set Content-Type header (keeps it a 'simple request').
- * 2. Use redirect: 'follow' (mandatory for GAS).
- * 3. Ensure GAS deployment is 'Anyone'.
  */
 const postToScript = async (payload: any) => {
     if (!API_URL || API_URL.includes('template-id')) {
         throw new Error("Backend API URL is not configured.");
     }
-    
-    console.log(`[API-OUT] ${payload.action}:`, payload);
     
     try {
         const response = await fetch(API_URL, {
@@ -26,7 +20,6 @@ const postToScript = async (payload: any) => {
             mode: 'cors',
             redirect: 'follow',
             body: JSON.stringify(payload)
-            // Note: No headers defined here. This is intentional.
         });
         
         if (!response.ok) {
@@ -42,25 +35,20 @@ const postToScript = async (payload: any) => {
         try {
             result = JSON.parse(text);
         } catch (e) {
-            console.warn("[API-WARN] Non-JSON response:", text);
             if (text.toLowerCase().includes('success') || text.toLowerCase().includes('ok')) {
                 return { status: 'success', message: 'Action completed successfully.' };
             }
-            throw new Error("Invalid response from server. Ensure your GAS project is deployed and returning valid JSON.");
+            throw new Error("Invalid response from server.");
         }
 
-        const normalizedResult = {
+        return {
             status: result.status || 'success', 
             message: result.message || result.error || 'Operation completed.',
             ...result
         };
-
-        console.log(`[API-IN] ${payload.action} Result:`, normalizedResult);
-        return normalizedResult;
     } catch (error: any) {
-        console.error("[API-CRITICAL] Network/Script Failure:", error);
         if (error.message === 'Failed to fetch') {
-            throw new Error("Cannot reach backend (CORS or Network Error). Please ensure your script is deployed as a Web App with access 'Anyone'.");
+            throw new Error("Cannot reach backend. Please ensure your script is deployed as a Web App with access 'Anyone'.");
         }
         throw error;
     }
@@ -203,7 +191,8 @@ const transformSheetDataToInventory = (rows: any[]): InventoryItem[] => {
         mrp: Number(row['MRP'] || 0),
         basicPrice: 0, 
         spIncTax: Number(row['Selling Price'] || 0),
-        stock: Number(row['Inventory'] || 0)
+        stock: Number(row['Inventory'] || 0),
+        size: String(row['Size'] || '')
     }));
 };
 
@@ -234,44 +223,76 @@ const formatSheetDate = (dateVal: any): string => {
 const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
     const poMap = new Map<string, PurchaseOrder>();
     rows.forEach((row) => {
-        const poNumber = row['PO Number'] || row['PO_Number'];
+        const poNumber = row['PO Number'];
         if (!poNumber) return;
+
         const rawStatus = row['Status'] || 'New';
         let status = POStatus.NewPO;
         if (rawStatus === 'Below Threshold') status = POStatus.BelowThreshold;
         else if (Object.values(POStatus).includes(rawStatus as POStatus)) status = rawStatus as POStatus;
+
         const qty = Number(row['Qty'] || 0);
-        const fulfillableQty = Number(row['Fulfillable qty'] || 0);
         const unitCost = Number(row['Unit Cost (Tax Exclusive)'] || 0);
         const itemAmount = qty * unitCost;
-        const articleCode = String(row['Item Code'] || row['Article Code'] || '').trim();
+        const articleCode = String(row['Item Code'] || '').trim();
+
         const item: POItem = {
             articleCode,
             masterSku: String(row['Master SKU'] || ''),
             itemName: row['Item Name'] || '',
-            qty, fulfillableQty, unitCost,
+            qty, 
+            fulfillableQty: Number(row['Fulfillable qty'] || 0), 
+            unitCost,
             mrp: Number(row['MRP'] || 0),
             priceCheckStatus: String(row['Price Check'] || '').trim(),
-            // CRITICAL FIX: Ensure item carries row-level status
-            itemStatus: String(rawStatus),
-            eeOrderRefId: row['EE Order Ref ID'] ? String(row['EE Order Ref ID']) : (row['EE_Order_Ref_ID'] ? String(row['EE_Order_Ref_ID']) : undefined),
+            itemStatus: String(row['EE_item_item_status'] || rawStatus),
+            eeOrderRefId: row['EE Order Ref ID'] ? String(row['EE Order Ref ID']) : undefined,
             eeReferenceCode: row['EE_reference_code'] ? String(row['EE_reference_code']) : undefined, 
+            eeOrderDate: formatSheetDate(row['EE_order_date']),
             eeOrderStatus: row['EE_order_status'] ? String(row['EE_order_status']) : undefined,
+            eeBatchCreatedAt: formatSheetDate(row['EE_batch_created_at']),
+            eeInvoiceDate: formatSheetDate(row['EE_invoice_date']),
+            eeManifestDate: formatSheetDate(row['EE_manifest_date']),
+            invoiceId: row['Invoice Id'] ? String(row['Invoice Id']) : undefined,
+            invoiceStatus: row['Invoice Status'] ? String(row['Invoice Status']) : undefined,
             invoiceNumber: row['Invoice Number'] ? String(row['Invoice Number']) : undefined,
+            invoiceDate: formatSheetDate(row['Invoice Date']),
+            invoiceTotal: Number(row['Invoice Total'] || 0),
+            invoiceUrl: row['Invoice Url'] ? String(row['Invoice Url']) : undefined,
             invoicePdfUrl: row['Invoice PDF Url'] ? String(row['Invoice PDF Url']) : undefined,
-            awb: row['AWB'] ? String(row['AWB']) : undefined,
-            trackingStatus: row['Tracking Status'] ? String(row['Tracking Status']) : undefined,
             eeBoxCount: Number(row['Box Data'] || 0),
             itemQuantity: Number(row['EE_item_item_quantity'] || 0),
             cancelledQuantity: Number(row['EE_item_cancelled_quantity'] || 0),
             shippedQuantity: Number(row['EE_item_shipped_quantity'] || 0),
             returnedQuantity: Number(row['EE_item_returned_quantity'] || 0),
+            ewb: row['EWB'] ? String(row['EWB']) : undefined,
+            fbaShipmentId: row['FBA Shipment IDs'] ? String(row['FBA Shipment IDs']) : undefined,
+            inboundPlanId: row['Inbound Plan ID'] ? String(row['Inbound Plan ID']) : undefined,
+            gst: row['GST'] ? String(row['GST']) : undefined,
+            carrier: row['Carrier'] ? String(row['Carrier']) : undefined,
+            awb: row['AWB'] ? String(row['AWB']) : undefined,
+            bookedDate: formatSheetDate(row['Booked Date']),
+            trackingUrl: row['Tracking URL'] ? String(row['Tracking URL']) : undefined,
+            trackingStatus: row['Tracking Status'] ? String(row['Tracking Status']) : undefined,
+            edd: formatSheetDate(row['EDD']),
+            latestStatus: row['Latest Status'] ? String(row['Latest Status']) : undefined,
+            latestStatusDate: formatSheetDate(row['Latest Status Date']),
+            currentLocation: row['Current Location'] ? String(row['Current Location']) : undefined,
+            deliveredDate: formatSheetDate(row['Delivered Date']),
+            rtoStatus: row['RTO Status'] ? String(row['RTO Status']) : undefined,
+            rtoAwb: row['RTO AWB'] ? String(row['RTO AWB']) : undefined,
+            freightCharged: Number(row['Freight Charged'] || 0),
+            zohoItemId: row['Zoho Item ID'] ? String(row['Zoho Item ID']) : undefined,
         };
+
         if (poMap.has(poNumber)) {
             const po = poMap.get(poNumber)!;
             po.items?.push(item);
             po.qty += qty;
             po.amount += itemAmount;
+            // Update metadata if item row has newer information
+            if (!po.poPdfUrl && row['PO PDF']) po.poPdfUrl = String(row['PO PDF']);
+            if (po.poExpiryDate === 'N/A' && row['PO Expiry Date']) po.poExpiryDate = formatSheetDate(row['PO Expiry Date']);
         } else {
             poMap.set(poNumber, {
                 id: poNumber, poNumber, status,
@@ -279,14 +300,18 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
                 storeCode: row['Store Code'] || '',
                 qty, amount: itemAmount,
                 orderDate: formatSheetDate(row['PO Date']),
+                poEdd: formatSheetDate(row['PO EDD']),
+                poExpiryDate: formatSheetDate(row['PO Expiry Date']) || 'N/A',
+                poPdfUrl: row['PO PDF'] ? String(row['PO PDF']) : undefined,
                 eeCustomerId: row['EE Customer ID'] ? String(row['EE Customer ID']) : undefined,
                 zohoContactId: row['Zoho Contact ID'] ? String(row['Zoho Contact ID']) : undefined,
                 items: [item],
                 appointmentDate: formatSheetDate(row['Appointment Date']),
                 appointmentTime: row['Appointment Time'] ? String(row['Appointment Time']) : undefined,
                 appointmentId: row['Appointment ID'] ? String(row['Appointment ID']) : undefined,
-                qrCodeUrl: row['QRCodeURL'] ? String(row['QRCodeURL']) : (row['QR Code Url'] ? String(row['QR Code Url']) : undefined),
-                contactVerified: !!row['Contact Verified'] || false
+                qrCodeUrl: row['QR Code URL'] ? String(row['QR Code URL']) : undefined,
+                contactVerified: !!row['Contact Verified'] || false,
+                fbaShipmentId: row['FBA Shipment IDs'] ? String(row['FBA Shipment IDs']) : undefined,
             });
         }
     });
