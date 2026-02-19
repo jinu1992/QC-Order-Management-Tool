@@ -28,9 +28,10 @@ import {
     PrinterIcon,
     AlertIcon,
     QuestionMarkCircleIcon,
-    DownloadIcon
+    DownloadIcon,
+    UploadIcon
 } from './icons/Icons';
-import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO, fetchPackingData, updateFBAShipmentId, syncEasyEcomShipments } from '../services/api';
+import { createZohoInvoice, pushToNimbusPost, fetchPurchaseOrder, syncSinglePO, fetchPackingData, updateFBAShipmentId, syncEasyEcomShipments, updatePOStatus, processFlipkartConsignment } from '../services/api';
 import AppointmentPass from './AppointmentPass';
 import LoadingCube from './LoadingCube';
 
@@ -89,6 +90,10 @@ interface GroupedSalesOrder {
     qrCodeUrl?: string;
     ewb?: string;
     fbaShipmentId?: string;
+    // Specific for Flipkart
+    consignmentQty?: number;
+    consignmentProducts?: number;
+    consignmentValue?: string;
 }
 
 // --- Formatters ---
@@ -129,6 +134,156 @@ const formatDisplayTime = (timeInput?: any): string => {
     } catch (e) {
         return timeStr;
     }
+};
+
+// --- Flipkart Consignment Modal ---
+
+const FlipkartConsignmentModal: FC<{ 
+    so: GroupedSalesOrder, 
+    onClose: () => void, 
+    onSuccess: () => void,
+    addNotification: any,
+    userEmail: string
+}> = ({ so, onClose, onSuccess, addNotification, userEmail }) => {
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadComplete, setUploadComplete] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const extractTextFromPdf = async (file: File): Promise<string> => {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdfjsLib = (window as any)['pdfjs-dist/build/pdf'];
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = "";
+        
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const pageText = content.items.map((item: any) => item.str).join(" ");
+            fullText += pageText + "\n";
+        }
+        return fullText;
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        
+        try {
+            // 1. Extract text from PDF using pdf.js
+            const extractedText = await extractTextFromPdf(file);
+            
+            // 2. Send extracted text to backend API
+            const res = await processFlipkartConsignment(so.poReference, extractedText, userEmail);
+            
+            if (res.status === 'success') {
+                setUploadComplete(true);
+                addNotification(res.message, 'success');
+                onSuccess();
+            } else {
+                addNotification(res.message || 'Processing failed.', 'error');
+                setIsUploading(false);
+            }
+        } catch (err: any) {
+            console.error("PDF Extraction Error:", err);
+            addNotification('Error reading PDF file. Ensure it is a valid Flipkart Consignment PDF.', 'error');
+            setIsUploading(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[150] p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-blue-100 animate-in fade-in zoom-in-95 duration-200">
+                <div className="p-6 bg-blue-600 border-b border-blue-700 flex flex-col items-center text-center">
+                    <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mb-4">
+                        <GlobeIcon className="h-10 w-10 text-white" />
+                    </div>
+                    <h3 className="text-xl font-black text-white uppercase tracking-tight">Flipkart Consignment Portal</h3>
+                    <p className="text-xs text-blue-100 mt-1">Order Ref: <span className="font-bold text-white">{so.id}</span></p>
+                </div>
+                
+                <div className="p-8">
+                    <div className="grid grid-cols-2 gap-4 mb-8">
+                        <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Target PO</p>
+                            <p className="text-sm font-black text-gray-800">{so.poReference}</p>
+                        </div>
+                        <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">AWB / Tracking</p>
+                            <p className="text-sm font-black text-blue-600 font-mono">{so.awb || 'N/A'}</p>
+                        </div>
+                        <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Carrier</p>
+                            <p className="text-sm font-black text-gray-800">{so.carrier || 'N/A'}</p>
+                        </div>
+                        <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Status</p>
+                            <p className="text-sm font-black text-partners-green uppercase">{so.status}</p>
+                        </div>
+                    </div>
+
+                    {!uploadComplete ? (
+                        <div className="space-y-4">
+                            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3">
+                                <InfoIcon className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                                <p className="text-xs text-blue-800 leading-relaxed">Please upload the <b>Consignment PDF</b> file generated from the Flipkart portal. Our AI will extract the Consignment ID and Delivery Schedule automatically.</p>
+                            </div>
+                            
+                            <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                className="hidden" 
+                                accept=".pdf" 
+                                onChange={handleFileUpload} 
+                            />
+                            
+                            <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isUploading}
+                                className="w-full py-6 bg-white border-4 border-dashed border-gray-200 text-gray-400 font-bold rounded-3xl hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition-all flex flex-col items-center gap-3 group disabled:opacity-50"
+                            >
+                                {isUploading ? (
+                                    <RefreshIcon className="h-10 w-10 animate-spin text-blue-500" />
+                                ) : (
+                                    <UploadIcon className="h-10 w-10 text-gray-300 group-hover:text-blue-400 group-hover:scale-110 transition-transform" />
+                                )}
+                                <div className="text-center">
+                                    <span className="text-sm block">{isUploading ? 'Extracting Data...' : 'Select Consignment PDF'}</span>
+                                    {!isUploading && <span className="text-[10px] uppercase tracking-widest opacity-50">Click or Drag File Here</span>}
+                                </div>
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="text-center py-6 animate-in fade-in slide-in-from-bottom-2">
+                            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <CheckCircleIcon className="h-12 w-12 text-green-600" />
+                            </div>
+                            <h4 className="text-lg font-bold text-gray-800">Linked Successfully</h4>
+                            <p className="text-sm text-gray-500 mt-2">The PO database has been updated with real consignment details. You can now print box labels.</p>
+                            <button 
+                                onClick={onClose}
+                                className="mt-8 w-full py-4 bg-gray-900 text-white font-bold rounded-2xl shadow-xl hover:bg-black transition-all active:scale-95"
+                            >
+                                Close & Refresh
+                            </button>
+                        </div>
+                    )}
+
+                    {!uploadComplete && (
+                        <button 
+                            onClick={onClose}
+                            className="w-full py-3 mt-4 text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // --- Amazon FBA Shipment ID Dialog ---
@@ -592,11 +747,15 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     const [instamartPrintPackModal, setInstamartPrintPackModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     const [shippingConfirm, setShippingConfirm] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     const [fbaShipmentModal, setFbaShipmentModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
+    const [flipkartConsignmentModal, setFlipkartConsignmentModal] = useState<{ isOpen: boolean, so: GroupedSalesOrder | null }>({ isOpen: false, so: null });
     const [activeAppointmentPass, setActiveAppointmentPass] = useState<GroupedSalesOrder | null>(null);
     
     const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
     const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
     const filterMenuRef = useRef<HTMLDivElement>(null);
+
+    // Get current user email for logging (from bypass logic or system)
+    const userEmail = "jainendra@cubelelo.com"; 
 
     const tabs = [
         { id: 'All POs', name: 'All POs' },
@@ -702,7 +861,10 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                         appointmentRemarks: po.appointmentRemarks,
                         qrCodeUrl: po.qrCodeUrl,
                         ewb: item.ewb || po.ewb,
-                        fbaShipmentId: item.fbaShipmentId || po.fbaShipmentId
+                        fbaShipmentId: item.fbaShipmentId || po.fbaShipmentId,
+                        consignmentQty: po.consignmentQty,
+                        consignmentProducts: po.consignmentProducts,
+                        consignmentValue: po.consignmentValue
                     };
                 } else {
                     const curPo = String(po.id || '');
@@ -795,6 +957,107 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
             }
         }
         setIsRefreshingSo(null);
+    };
+
+    const handleFlipkartConsignmentSuccess = () => {
+        // Since backend already updated the database, we just need to refresh our frontend data.
+        onSync();
+    };
+
+    const handlePrintFlipkartLabels = (so: GroupedSalesOrder) => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        const deliveryDate = so.appointmentDate || 'TBD';
+        const consignmentId = so.appointmentId || 'N/A';
+        const supplierName = "Brainlytic Solutions Pvt Ltd";
+        const totalQty = so.consignmentQty || so.qty || 0; 
+        const productCount = so.consignmentProducts || so.items.length || 0;
+        const totalValue = so.consignmentValue || (so.amount * 1.05).toFixed(2);
+
+let html = `
+<html>
+  <head>
+    <title>Flipkart Minutes Packing Slip - ${so.id}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @media print {
+        @page { size: 4in 6in; margin: 0; }
+        body { margin: 0; -webkit-print-color-adjust: exact; color: black; }
+      }
+    </style>
+  </head>
+
+  <body class="font-mono bg-white text-black">
+    <div class="min-h-screen p-6 page-break">
+
+      <!-- HEADER -->
+      <div class="border-b-2 border-black pb-2 mb-4">
+        <p class="text-xl font-black uppercase">Flipkart Minutes – Box Label</p>
+      </div>
+
+      <!-- PRIMARY IDENTIFIERS -->
+      <div class="space-y-4 mb-6">
+        <div>
+          <p class="text-xs font-bold uppercase">PO Number</p>
+          <p class="text-3xl font-black uppercase">${so.poReference}</p>
+        </div>
+
+        <div>
+          <p class="text-xs font-bold uppercase">Consignment Number</p>
+          <p class="text-3xl font-black uppercase">${consignmentId}</p>
+        </div>
+
+      </div>
+
+      <!-- DIVIDER -->
+      <div class="border-t-2 border-black pt-4 space-y-4">
+
+        <div>
+          <p class="text-xs font-bold uppercase">Supplier Name</p>
+          <p class="text-xl font-black uppercase">${supplierName}</p>
+        </div>
+
+        <div>
+          <p class="text-xs font-bold uppercase">Delivery Date</p>
+          <p class="text-2xl font-black uppercase">${deliveryDate}</p>
+        </div>
+
+        <div>
+          <p class="text-xs font-bold uppercase">Consignment Quantity</p>
+          <p class="text-2xl font-black">${totalQty}</p>
+        </div>
+
+        <div>
+          <p class="text-xs font-bold uppercase">Consignment Products</p>
+          <p class="text-2xl font-black">${productCount}</p>
+        </div>
+
+        <div>
+          <p class="text-xs font-bold uppercase">Consignment Value</p>
+          <p class="text-2xl font-black">₹${Math.floor(Number(totalValue))}</p>
+        </div>
+
+      </div>
+
+
+    </div>
+
+    <script>
+      window.onload = function () {
+        setTimeout(function () {
+          window.print();
+          window.onafterprint = function () { window.close(); };
+        }, 500);
+      };
+    </script>
+  </body>
+</html>
+`;
+
+
+        printWindow.document.write(html);
+        printWindow.document.close();
     };
 
     const handleEESync = async () => {
@@ -1030,7 +1293,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
         if (canInvoice) return { label: isCreatingInvoice === so.id ? 'Creating...' : 'Create Invoice', color: 'bg-purple-600 text-white hover:bg-purple-700', onClick: () => handleCreateZohoInvoiceAction(so.id, so.poReference, so), disabled: isExecuting };
         
         if (so.status === 'Invoiced' && !so.awb) {
-            if (so.boxCount === 0) {
+            if (so.boxCount === 0 && !so.channel.toLowerCase().includes('flipkart')) {
                 return { 
                     label: 'Box Data Missing', 
                     color: 'bg-orange-50 text-orange-600 border border-orange-200 cursor-default', 
@@ -1080,8 +1343,19 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm">
-            {portalHelper.isOpen && portalHelper.so && <PortalHelperModal_ so={portalHelper.so} onClose={() => setPortalHelper({ isOpen: false, so: null })} />}
+            {portalHelper.isOpen && portalHelper.so && <PortalHelperModal so={portalHelper.so} onClose={() => setPortalHelper({ isOpen: false, so: null })} />}
             {instamartPrintPackModal.isOpen && instamartPrintPackModal.so && <InstamartPrintManager so={instamartPrintPackModal.so} onClose={() => setInstamartPrintPackModal({ isOpen: false, so: null })} />}
+            
+            {flipkartConsignmentModal.isOpen && flipkartConsignmentModal.so && (
+                <FlipkartConsignmentModal 
+                    so={flipkartConsignmentModal.so} 
+                    userEmail={userEmail}
+                    addNotification={addNotification}
+                    onClose={() => setFlipkartConsignmentModal({ isOpen: false, so: null })}
+                    onSuccess={handleFlipkartConsignmentSuccess}
+                />
+            )}
+
             {fbaShipmentModal.isOpen && fbaShipmentModal.so && (
                 <FbaShipmentModal 
                     so={fbaShipmentModal.so} 
@@ -1178,13 +1452,15 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                 const isBlinkit = so.channel.toLowerCase().includes('blinkit');
                                 
                                 const hasLabel = so.status === 'Label Generated' || so.status === 'Shipped' || so.status === 'Delivered' || !!so.awb;
-                                const showPrintActionInRow = isInstamart && so.boxCount > 0 && hasLabel;
+                                const hasAppointmentId = !!so.appointmentId; // Stores the Consignment ID for Flipkart
                                 
-                                // Specific for Flipkart Minutes Packing Slip
+                                const showInstamartPrintAction = isInstamart && so.boxCount > 0 && hasLabel;
+                                const showFlipkartPrintAction = isFlipkart && hasAppointmentId;
+                                
                                 const showFlipkartDownload = isFlipkart && hasLabel;
 
-                                const showAppointmentBtn = (isBlinkit) && hasLabel && (so.status !== 'Delivered');
-                                const hasAppointmentId = !!so.appointmentId;
+                                const showBlinkitAppointmentBtn = isBlinkit && hasLabel && (so.status !== 'Delivered');
+                                const showFlipkartAppointmentBtn = isFlipkart && hasLabel && !hasAppointmentId && (so.status !== 'Delivered');
 
                                 return (
                                     <Fragment key={so.id}>
@@ -1207,23 +1483,37 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                             <DownloadIcon className="h-3.5 w-3.5" /> Packing Slip
                                                         </button>
                                                     )}
-                                                    {showAppointmentBtn && (
+                                                    {showBlinkitAppointmentBtn && (
                                                         <button 
                                                             onClick={(e) => { 
                                                                 e.stopPropagation(); 
-                                                                if (hasAppointmentId) {
-                                                                    setActiveAppointmentPass(so);
-                                                                } else {
-                                                                    setPortalHelper({ isOpen: true, so });
-                                                                }
+                                                                if (hasAppointmentId) setActiveAppointmentPass(so);
+                                                                else setPortalHelper({ isOpen: true, so });
                                                             }}
                                                             className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap flex items-center gap-1.5 ${hasAppointmentId ? 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100' : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'}`}
                                                         >
                                                             {hasAppointmentId ? <PrinterIcon className="h-3.5 w-3.5" /> : <PlusIcon className="h-3.5 w-3.5" />}
-                                                            {hasAppointmentId ? 'Print Appointment Pass' : 'Generate Appointment Pass'}
+                                                            {hasAppointmentId ? 'Print Appt Pass' : 'Take Appointment'}
                                                         </button>
                                                     )}
-                                                    {showPrintActionInRow && (
+                                                    {showFlipkartAppointmentBtn && (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); setFlipkartConsignmentModal({ isOpen: true, so }); }}
+                                                            className="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1.5"
+                                                        >
+                                                            <GlobeIcon className="h-3.5 w-3.5" /> Link Consignment
+                                                        </button>
+                                                    )}
+                                                    {showFlipkartPrintAction && (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handlePrintFlipkartLabels(so); }}
+                                                            className="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap bg-partners-green text-white hover:bg-green-700 flex items-center gap-1.5"
+                                                            title="Print Flipkart Box Labels"
+                                                        >
+                                                            <PrinterIcon className="h-3.5 w-3.5" /> Print Labels
+                                                        </button>
+                                                    )}
+                                                    {showInstamartPrintAction && (
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); setInstamartPrintPackModal({ isOpen: true, so }); }}
                                                             className="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap bg-partners-green text-white hover:bg-green-700 flex items-center gap-1.5"
@@ -1303,20 +1593,33 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                             <DownloadIcon className="h-4 w-4" /> Download Flipkart CSV Slip
                                                                         </button>
                                                                     )}
-                                                                    {showAppointmentBtn && (
+                                                                    {showBlinkitAppointmentBtn && (
                                                                         <button 
                                                                             onClick={(e) => { 
                                                                                 e.stopPropagation(); 
-                                                                                if (hasAppointmentId) {
-                                                                                    setActiveAppointmentPass(so);
-                                                                                } else {
-                                                                                    setPortalHelper({ isOpen: true, so });
-                                                                                }
+                                                                                if (hasAppointmentId) setActiveAppointmentPass(so);
+                                                                                else setPortalHelper({ isOpen: true, so });
                                                                             }}
                                                                             className={`px-6 py-2 text-[11px] font-bold rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-2 ${hasAppointmentId ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
                                                                         >
                                                                             {hasAppointmentId ? <PrinterIcon className="h-4 w-4" /> : <PlusIcon className="h-4 w-4" />}
                                                                             {hasAppointmentId ? 'Print Appointment Pass' : 'Generate Appointment Pass'}
+                                                                        </button>
+                                                                    )}
+                                                                    {showFlipkartAppointmentBtn && (
+                                                                        <button 
+                                                                            onClick={(e) => { e.stopPropagation(); setFlipkartConsignmentModal({ isOpen: true, so }); }}
+                                                                            className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95"
+                                                                        >
+                                                                            <GlobeIcon className="h-4 w-4" /> Link Consignment Details
+                                                                        </button>
+                                                                    )}
+                                                                    {isFlipkart && hasAppointmentId && (
+                                                                         <button 
+                                                                            onClick={(e) => { e.stopPropagation(); handlePrintFlipkartLabels(so); }}
+                                                                            className="flex items-center gap-2 px-6 py-2 bg-partners-green text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-green-700 transition-all active:scale-95"
+                                                                        >
+                                                                            <PrinterIcon className="h-4 w-4" /> Print Box Labels
                                                                         </button>
                                                                     )}
                                                                     {(so.channel.toLowerCase().includes('instamart') && so.boxCount > 0) && (
@@ -1333,7 +1636,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                         <div className="flex flex-col items-center gap-1">
                                                                             <button 
                                                                                 onClick={() => {
-                                                                                    if (so.boxCount === 0) {
+                                                                                    if (so.boxCount === 0 && !isFlipkart) { // Flipkart handles boxes differently via consignment
                                                                                         addNotification('Please update box count first.', 'warning');
                                                                                         return;
                                                                                     }
@@ -1343,11 +1646,11 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                                         handlePushToNimbusAction(so.id, so.poReference);
                                                                                     }
                                                                                 }} 
-                                                                                disabled={!!isPushingNimbus || so.boxCount === 0 || ((so.invoiceTotal || 0) >= 50000 && !so.ewb) || (so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba'))} 
+                                                                                disabled={!!isPushingNimbus || (so.boxCount === 0 && !isFlipkart) || ((so.invoiceTotal || 0) >= 50000 && !so.ewb) || (so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba'))} 
                                                                                 className={`flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md transition-all active:scale-95 disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed`}
                                                                             >
                                                                                 {isPushingNimbus === so.id ? <RefreshIcon className="h-3 w-3 animate-spin" /> : <SendIcon className="h-3 w-3" />}
-                                                                                {(so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba')) ? 'FBA Fulfillment' : (isPushingNimbus === so.id ? 'Shipping...' : (so.boxCount === 0 ? 'Box Data Pending' : 'Ship with Nimbus Post'))}
+                                                                                {(so.channel.toLowerCase().includes('amazon_fba') || so.channel.toLowerCase().includes('amazon fba')) ? 'FBA Fulfillment' : (isPushingNimbus === so.id ? 'Shipping...' : ((so.boxCount === 0 && !isFlipkart) ? 'Box Data Pending' : 'Ship with Nimbus Post'))}
                                                                             </button>
                                                                             {((so.invoiceTotal || 0) >= 50000 && !so.ewb) && (
                                                                                 <p className="text-[10px] text-red-600 font-black animate-pulse uppercase tracking-tighter">EWB Missing</p>
@@ -1357,10 +1660,10 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                 </div>
                                                             </div>
                                                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                                                                <div className={`p-4 rounded-xl border transition-all ${so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{so.boxCount || 0}</p></div></div></div>
+                                                                <div className={`p-4 rounded-xl border transition-all ${isFlipkart || so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${isFlipkart || so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${isFlipkart || so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{isFlipkart ? (so.consignmentQty || 60) : (so.boxCount || 0)}</p></div></div></div>
                                                                 
                                                                 <div className="p-4 bg-partners-light-blue rounded-xl border border-blue-100 flex flex-col">
-                                                                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-3">Appointment Details</p>
+                                                                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-3">{isFlipkart ? 'Consignment Details' : 'Appointment Details'}</p>
                                                                     <div className="flex-1 flex flex-col justify-between space-y-3">
                                                                         <div>
                                                                             <div className="flex items-center gap-2 mb-1">
@@ -1378,7 +1681,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                         </div>
 
                                                                         <div className="pt-2 border-t border-blue-100">
-                                                                            <p className="text-[8px] font-bold text-blue-400 uppercase mb-0.5">Appointment ID:</p>
+                                                                            <p className="text-[8px] font-bold text-blue-400 uppercase mb-0.5">{isFlipkart ? 'Consignment ID' : 'Appointment ID'}:</p>
                                                                             <p className="text-xs font-black text-blue-700 font-mono tracking-tight">{so.appointmentId || 'N/A'}</p>
                                                                         </div>
                                                                     </div>
@@ -1388,7 +1691,7 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
                                                                 <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 col-span-1 md:col-span-1"><div className="flex flex-col h-full justify-between"><div><p className="text-[10px] font-bold text-blue-400 uppercase">Carrier & AWB</p><p className="text-sm font-bold text-gray-900 truncate">{so.carrier || 'Pending'}</p><p className="text-xs font-mono text-blue-600 font-bold tracking-wider">{so.awb}</p></div><span className={`mt-2 w-fit px-2 py-0.5 rounded text-[10px] font-bold border ${so.trackingStatus?.toLowerCase() === 'delivered' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{so.trackingStatus || 'In-Transit'}</span></div></div>
                                                                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-100"><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Delivery SLA</p><div className="space-y-3"><div><p className="text-[9px] font-bold text-gray-400">Exp Delivery Date</p><p className="text-sm font-bold text-partners-green">{so.edd || 'TBD'}</p></div><div><p className="text-[9px] font-bold text-gray-400">Delivered Date</p><p className="text-sm font-bold text-gray-800">{so.deliveredDate || '-'}</p></div></div></div>
                                                                 <div className={`p-4 rounded-xl border ${so.status === 'Returned' ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Return Status (RTO)</p>{so.status === 'Returned' ? <div className="space-y-2"><p className="text-xs font-bold text-red-600">{so.rtoStatus || 'Returned'}</p><div><p className="text-[9px] font-bold text-gray-400">Return AWB</p><p className="text-xs font-mono font-bold text-red-600">{so.rtoAwb || 'N/A'}</p></div></div> : <div className="flex flex-col items-center justify-center py-2"><CheckCircleIcon className="h-6 w-6 text-gray-200" /><p className="text-[10px] font-bold text-gray-400 mt-1 uppercase">No Returns</p></div>}</div>
-                                                            </> : <div className="md:col-span-3 p-12 border-2 border-dashed border-gray-100 rounded-2xl flex flex-col items-center justify-center text-center">{!so.invoiceNumber ? <><LockClosedIcon className="h-8 w-8 text-gray-200 mb-3" /><p className="text-sm font-bold text-gray-400 uppercase">Logistics Pending Invoice Generation</p></> : so.boxCount === 0 ? <><div className="p-4 bg-red-50 rounded-xl border border-red-100 mb-3"><CubeIcon className="h-8 w-8 text-red-500 mx-auto mb-2" /><p className="text-sm font-bold text-red-600 uppercase">Missing Physical Box Data</p></div><p className="text-xs text-red-400">Update box count in the backend to enable shipping.</p></> : <><TruckIcon className="h-8 w-8 text-blue-200 mb-3" /><p className="text-sm font-bold text-blue-400 uppercase">Invoice Ready for Shipment</p><p className="text-xs text-blue-300 mt-1">Generate AWB by clicking the 'Ship with Nimbus' button above.</p></>}</div>}
+                                                            </> : <div className="md:col-span-3 p-12 border-2 border-dashed border-gray-100 rounded-2xl flex flex-col items-center justify-center text-center">{!so.invoiceNumber ? <><LockClosedIcon className="h-8 w-8 text-gray-200 mb-3" /><p className="text-sm font-bold text-gray-400 uppercase">Logistics Pending Invoice Generation</p></> : (so.boxCount === 0 && !isFlipkart) ? <><div className="p-4 bg-red-50 rounded-xl border border-red-100 mb-3"><CubeIcon className="h-8 w-8 text-red-500 mx-auto mb-2" /><p className="text-sm font-bold text-red-600 uppercase">Missing Physical Box Data</p></div><p className="text-xs text-red-400">Update box count in the backend to enable shipping.</p></> : <><TruckIcon className="h-8 w-8 text-blue-200 mb-3" /><p className="text-sm font-bold text-blue-400 uppercase">Invoice Ready for Shipment</p><p className="text-xs text-blue-300 mt-1">Generate AWB by clicking the 'Ship with Nimbus' button above.</p></>}</div>}
                                                             </div>
                                                             {so.awb && (so.channel.toLowerCase().includes('blinkit') || so.channel.toLowerCase().includes('zepto')) && so.status !== 'Shipped' && so.status !== 'Delivered' && so.status !== 'Returned' && (
                                                                 <div className={`mt-4 border p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-2 ${so.channel.toLowerCase().includes('zepto') ? 'bg-partners-light-purple border-partners-purple/30' : 'bg-partners-light-yellow border-partners-yellow/30'}`}>

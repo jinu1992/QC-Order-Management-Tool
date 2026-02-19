@@ -137,6 +137,10 @@ export interface PurchaseOrder {
     freightCharged?: number;
     totalPoValue?: number;
     totalCostPrice?: number;
+    // Fix: Added missing properties used in SalesOrderTable for Flipkart consignment handling
+    consignmentQty?: number;
+    consignmentProducts?: number;
+    consignmentValue?: string;
 }
 
 export interface User {

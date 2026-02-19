@@ -1,3 +1,4 @@
+
 import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePocMapping, User, UploadMetadata } from '../types';
 
 /**
@@ -68,6 +69,10 @@ export const fetchPackingData = async (referenceCode: string): Promise<any[]> =>
 
 export const logFileUpload = async (functionId: string, userName: string, fileData?: string, fileName?: string): Promise<{status: string, message?: string}> => {
     return await postToScript({ action: 'logFileUpload', functionId, userName, fileData, fileName });
+};
+
+export const processFlipkartConsignment = async (poNumber: string, fileText: string, userEmail: string): Promise<{status: string, message?: string, details?: any}> => {
+    return await postToScript({ action: 'processFlipkartConsignment', poNumber, fileText, userEmail });
 };
 
 export const createZohoInvoice = async (eeReferenceCode: string): Promise<{status: string, message?: string}> => {
@@ -312,6 +317,10 @@ const transformSheetDataToPOs = (rows: any[]): PurchaseOrder[] => {
                 qrCodeUrl: row['QR Code URL'] ? String(row['QR Code URL']) : undefined,
                 contactVerified: !!row['Contact Verified'] || false,
                 fbaShipmentId: row['FBA Shipment IDs'] ? String(row['FBA Shipment IDs']) : undefined,
+                // Fix: Extracting consignment properties from sheet columns if they exist
+                consignmentQty: row['Consignment Qty'] ? Number(row['Consignment Qty']) : undefined,
+                consignmentProducts: row['Consignment Products'] ? Number(row['Consignment Products']) : undefined,
+                consignmentValue: row['Consignment Value'] ? String(row['Consignment Value']) : undefined,
             });
         }
     });
