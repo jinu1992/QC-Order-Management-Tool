@@ -1307,6 +1307,49 @@ let html = `
         addLog('CSV Download', `Downloaded Flipkart Packing Slip for ${so.id}`);
     };
 
+    /**
+     * Special function for Zepto ASN CSV generation
+     */
+    const handleDownloadZeptoAsnCsv = (so: GroupedSalesOrder) => {
+        const headers = ["SKU Name", "SKU Code", "SKU Image", "Po Quantity", "Asn Quantity", "Po MRP", "EAN Number"];
+        const rows = so.items.map(item => {
+            const mapping = inventoryItems?.find(inv => 
+                (inv.sku === item.masterSku || inv.articleCode === item.articleCode) && 
+                inv.channel.toLowerCase().includes('zepto')
+            );
+
+            return [
+                item.itemName || mapping?.itemName || '',
+                item.articleCode || mapping?.articleCode || '',
+                '', // SKU Image
+                item.qty || 0,
+                item.shippedQuantity || item.itemQuantity || item.qty,
+                item.mrp || mapping?.mrp || 0,
+                mapping?.ean || ''
+            ];
+        });
+
+        if (rows.length === 0) {
+            addNotification('No items found in this order.', 'warning');
+            return;
+        }
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Zepto_ASN_${so.id}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        addLog('CSV Download', `Downloaded Zepto ASN CSV for ${so.id}`);
+    };
+
     const TimelineStep = ({ label, date, icon, isLast = false }: { label: string, date?: string, icon: React.ReactNode, isLast?: boolean }) => {
         const isActive = !!date;
         return (
@@ -1504,6 +1547,7 @@ let html = `
                                 const isInstamart = so.channel.toLowerCase().includes('instamart');
                                 const isFlipkart = so.channel.toLowerCase().includes('flipkart');
                                 const isBlinkit = so.channel.toLowerCase().includes('blinkit');
+                                const isZepto = so.channel.toLowerCase().includes('zepto');
                                 
                                 const hasLabel = so.status === 'Label Generated' || so.status === 'Shipped' || so.status === 'Delivered' || !!so.awb;
                                 const hasAppointmentId = !!so.appointmentId; // Stores the Consignment ID for Flipkart
@@ -1512,6 +1556,7 @@ let html = `
                                 const showFlipkartPrintAction = isFlipkart && hasAppointmentId;
                                 
                                 const showFlipkartDownload = isFlipkart && hasLabel;
+                                const showZeptoDownload = isZepto && (so.status === 'Invoiced' || so.status === 'Label Generated' || so.status === 'Shipped' || so.status === 'Delivered' || !!so.invoiceNumber);
 
                                 const showBlinkitAppointmentBtn = isBlinkit && hasLabel && (so.status !== 'Delivered');
                                 const showFlipkartAppointmentBtn = isFlipkart && hasLabel && !hasAppointmentId && (so.status !== 'Delivered');
@@ -1535,6 +1580,15 @@ let html = `
                                                             title="Download Flipkart Minutes CSV Packing Slip"
                                                         >
                                                             <DownloadIcon className="h-3.5 w-3.5" /> Packing Slip
+                                                        </button>
+                                                    )}
+                                                    {showZeptoDownload && (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleDownloadZeptoAsnCsv(so); }}
+                                                            className="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all shadow-sm active:scale-95 whitespace-nowrap bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 flex items-center gap-1.5"
+                                                            title="Download Zepto ASN CSV"
+                                                        >
+                                                            <DownloadIcon className="h-3.5 w-3.5" /> ASN CSV
                                                         </button>
                                                     )}
                                                     {showBlinkitAppointmentBtn && (
@@ -1645,6 +1699,14 @@ let html = `
                                                                             className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-blue-700 transition-all active:scale-95"
                                                                         >
                                                                             <DownloadIcon className="h-4 w-4" /> Download Flipkart CSV Slip
+                                                                        </button>
+                                                                    )}
+                                                                    {showZeptoDownload && (
+                                                                        <button 
+                                                                            onClick={(e) => { e.stopPropagation(); handleDownloadZeptoAsnCsv(so); }}
+                                                                            className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white text-[11px] font-bold rounded-lg shadow-md hover:bg-indigo-700 transition-all active:scale-95"
+                                                                        >
+                                                                            <DownloadIcon className="h-4 w-4" /> Download Zepto ASN CSV
                                                                         </button>
                                                                     )}
                                                                     {showBlinkitAppointmentBtn && (
