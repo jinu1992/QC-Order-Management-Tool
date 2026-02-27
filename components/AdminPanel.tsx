@@ -16,6 +16,7 @@ interface AdminPanelProps {
     onSync: () => void;
     activeTab: 'users' | 'roles' | 'channels' | 'integrations' | 'logs';
     setActiveTab: (tab: 'users' | 'roles' | 'channels' | 'integrations' | 'logs') => void;
+    addNotification: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 const inputClassName = "mt-1 block w-full rounded-lg border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-partners-green focus:ring-partners-green sm:text-sm py-3 px-3";
@@ -213,7 +214,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({ channel, onClose, onSave })
     );
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ logs, users, setUsers, rolePermissions, setRolePermissions, addLog, currentUser, channelConfigs, onSync, activeTab, setActiveTab }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ logs, users, setUsers, rolePermissions, setRolePermissions, addLog, currentUser, channelConfigs, onSync, activeTab, setActiveTab, addNotification }) => {
     const [userModal, setUserModal] = useState<{ isOpen: boolean, user?: User }>({ isOpen: false });
     const [isSavingUser, setIsSavingUser] = useState(false);
     
@@ -249,12 +250,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ logs, users, setUsers, rolePerm
             const res = await saveSystemConfig(systemConfig);
             if (res.status === 'success') {
                 addLog('System Config', 'Updated EasyEcom integration credentials');
-                alert('Configuration saved successfully.');
+                addNotification(res.message || 'Configuration saved successfully.', 'success');
             } else {
-                alert('Failed to save configuration.');
+                addNotification(res.message || 'Failed to save configuration.', 'error');
             }
         } catch (e) {
-            alert('Error saving configuration');
+            addNotification('Error saving configuration', 'error');
         } finally {
             setConfigLoading(false);
         }
@@ -272,13 +273,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ logs, users, setUsers, rolePerm
                     setUsers(prev => [...prev, userData]);
                     addLog('Create User', `Created new user ${userData.name} with role ${userData.role}`);
                 }
+                addNotification(res.message || 'User saved successfully.', 'success');
                 setUserModal({ isOpen: false });
                 onSync(); // Trigger global sync to ensure consistency
             } else {
-                alert('Failed to save user: ' + res.message);
+                addNotification(res.message || 'Failed to save user.', 'error');
             }
         } catch (e) {
-            alert('Network error saving user.');
+            addNotification('Network error saving user.', 'error');
         } finally {
             setIsSavingUser(false);
         }
@@ -292,11 +294,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ logs, users, setUsers, rolePerm
                 if (res.status === 'success') {
                     setUsers(prev => prev.filter(u => u.id !== userId));
                     addLog('Delete User', `Deleted user ${user?.name}`);
+                    addNotification(res.message || 'User deleted successfully.', 'success');
                 } else {
-                    alert('Failed to delete user.');
+                    addNotification(res.message || 'Failed to delete user.', 'error');
                 }
             } catch (e) {
-                alert('Network error deleting user.');
+                addNotification('Network error deleting user.', 'error');
             }
         }
     };
@@ -311,13 +314,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ logs, users, setUsers, rolePerm
             const res = await saveChannelConfig(config);
             if (res.status === 'success') {
                 addLog('Success', `Configuration saved for ${config.channelName}. Refreshing data...`);
+                addNotification(res.message || `Configuration saved for ${config.channelName}.`, 'success');
                 onSync(); // Trigger global refresh
             } else {
-                alert('Failed to save to Google Sheet: ' + res.message);
+                addNotification(res.message || 'Failed to save to Google Sheet.', 'error');
             }
         } catch (e) {
             console.error(e);
-            alert('Network error saving channel config.');
+            addNotification('Network error saving channel config.', 'error');
         }
     };
 

@@ -10,6 +10,7 @@ interface FinanceManagerProps {
     purchaseOrders: PurchaseOrder[];
     setPurchaseOrders: React.Dispatch<React.SetStateAction<PurchaseOrder[]>>;
     addLog: (action: string, details: string) => void;
+    addNotification: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 // --- Helper Components ---
@@ -325,7 +326,7 @@ const DownloadReportModal: FC<DownloadReportModalProps> = ({ onClose, data }) =>
 
 // --- Main Component ---
 
-const FinanceManager: React.FC<FinanceManagerProps> = ({ purchaseOrders, setPurchaseOrders, addLog }) => {
+const FinanceManager: React.FC<FinanceManagerProps> = ({ purchaseOrders, setPurchaseOrders, addLog, addNotification }) => {
     const [view, setView] = useState<'payments' | 'customers'>('payments');
     
     // Payment States
@@ -454,6 +455,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ purchaseOrders, setPurc
                 const newReceived = (p.amountReceived || 0) + amount;
                 const newStatus: PaymentStatus = newReceived >= p.amount ? 'Received' : 'Partial';
                 addLog('Payment Recorded', `Received ₹${amount} for PO ${p.poNumber}. Status: ${newStatus}`);
+                addNotification(`Payment of ₹${amount} recorded for PO ${p.poNumber}.`, 'success');
                 return { ...p, amountReceived: newReceived, paymentStatus: newStatus };
             }
             return p;
@@ -469,11 +471,13 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ purchaseOrders, setPurc
             } : p
         ));
         addLog('Payment Reminder', `Sent payment reminder for PO ${po.poNumber}`);
+        addNotification(`Payment reminder sent for PO ${po.poNumber}.`, 'success');
     };
 
     const handleCreateCustomer = (customer: Customer) => {
         setCustomers(prev => [customer, ...prev]);
         addLog('Create Customer', `Created new customer: ${customer.companyName} (${customer.customerCode})`);
+        addNotification(`Customer ${customer.companyName} created successfully.`, 'success');
         setCreateCustomerModal(false);
     };
 

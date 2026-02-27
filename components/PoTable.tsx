@@ -623,7 +623,7 @@ const PoTable: React.FC<PoTableProps> = ({
                     return p;
                 }));
 
-                addNotification(res.message, 'success');
+                addNotification(res.message || 'Pushed to EasyEcom successfully.', 'success');
                 addLog('EasyEcom Sync', `Pushed ${selected.length} items from PO ${po.poNumber}`);
                 setSelectedPoItems(prev => ({ ...prev, [po.id]: [] }));
                 refreshSinglePOState(po.poNumber);
@@ -661,7 +661,7 @@ const PoTable: React.FC<PoTableProps> = ({
                     return [...freshArray];
                 });
                 
-                addNotification(`Item ${cleanCode} cancelled.`, 'success');
+                addNotification(res.message || `Item ${cleanCode} cancelled.`, 'success');
                 addLog('Line Item Cancelled', `SKU ${cleanCode} in PO ${po.poNumber} marked as Cancelled`);
                 
                 setTimeout(() => refreshSinglePOState(po.poNumber), 500);
@@ -681,7 +681,7 @@ const PoTable: React.FC<PoTableProps> = ({
         try {
             const res = await syncZohoContacts();
             if (res.status === 'success') {
-                addNotification('Zoho contacts sync initiated.', 'success');
+                addNotification(res.message || 'Zoho contacts sync initiated.', 'success');
                 refreshSinglePOState(po.poNumber);
             } else { addNotification(`Error: ${res.message}`, 'error'); }
         } catch (e) { addNotification('Sync Exception.', 'error'); }
@@ -694,7 +694,7 @@ const PoTable: React.FC<PoTableProps> = ({
         try {
             const res = await requestZohoSync(po.zohoContactId);
             if (res.status === 'success') {
-                addNotification('Customer mapped to EasyEcom successfully.', 'success');
+                addNotification(res.message || 'Customer mapped to EasyEcom successfully.', 'success');
                 refreshSinglePOState(po.poNumber);
             } else { addNotification(`Error: ${res.message}`, 'error'); }
         } catch (e) { addNotification('EE Sync Exception.', 'error'); }
@@ -709,7 +709,7 @@ const PoTable: React.FC<PoTableProps> = ({
                 setPurchaseOrders(prev => prev.map(p => 
                     p.poNumber === po.poNumber ? { ...p, status: 'Below Threshold' as any } : p
                 ));
-                addNotification(`PO ${po.poNumber} marked as Below Threshold.`, 'success');
+                addNotification(res.message || `PO ${po.poNumber} marked as Below Threshold.`, 'success');
                 addLog('Threshold Update', `Moved PO ${po.poNumber} to Below Threshold`);
                 refreshSinglePOState(po.poNumber);
             } else { addNotification('Update Failed: ' + res.message, 'error'); }
@@ -726,7 +726,7 @@ const PoTable: React.FC<PoTableProps> = ({
                 setPurchaseOrders(prev => prev.map(p => 
                     p.poNumber === po.poNumber ? { ...p, status: 'Cancelled' as any } : p
                 ));
-                addNotification(`PO ${po.poNumber} cancelled successfully.`, 'success');
+                addNotification(res.message || `PO ${po.poNumber} cancelled successfully.`, 'success');
                 addLog('Cancel PO', `Marked PO ${po.poNumber} as Cancelled`);
                 refreshSinglePOState(po.poNumber);
             } else { addNotification('Cancel Failed: ' + res.message, 'error'); }
@@ -742,7 +742,7 @@ const PoTable: React.FC<PoTableProps> = ({
                 setPurchaseOrders(prev => prev.map(p => 
                     p.poNumber === po.poNumber ? { ...p, status: newStatus as any } : p
                 ));
-                addNotification(`PO ${po.poNumber} updated to ${newStatus}.`, 'success');
+                addNotification(res.message || `PO ${po.poNumber} updated to ${newStatus}.`, 'success');
                 addLog('Status Update', `Manually updated PO ${po.poNumber} to ${newStatus}`);
                 refreshSinglePOState(po.poNumber);
             } else { addNotification('Update Failed: ' + res.message, 'error'); }

@@ -1,5 +1,5 @@
 
-import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePocMapping, User, UploadMetadata } from '../types';
+import { InventoryItem, PurchaseOrder, POStatus, POItem, ChannelConfig, StorePocMapping, User, UploadMetadata, Quotation } from '../types';
 
 /**
  * !!! IMPORTANT !!!
@@ -37,15 +37,18 @@ const postToScript = async (payload: any) => {
             result = JSON.parse(text);
         } catch (e) {
             if (text.toLowerCase().includes('success') || text.toLowerCase().includes('ok')) {
-                return { status: 'success', message: 'Action completed successfully.' };
+                return { status: 'success', message: text || 'Action completed successfully.' };
             }
-            throw new Error("Invalid response from server.");
+            throw new Error(text || "Invalid response from server.");
         }
 
+        const status = result.status || 'success';
+        const message = result.message || result.error || result.msg || result.details || (status === 'success' ? 'Operation completed.' : 'Operation failed.');
+
         return {
-            status: result.status || 'success', 
-            message: result.message || result.error || 'Operation completed.',
-            ...result
+            ...result,
+            status,
+            message
         };
     } catch (error: any) {
         if (error.message === 'Failed to fetch') {
@@ -93,6 +96,66 @@ export const fetchUploadMetadata = async (): Promise<UploadMetadata[]> => {
         const json = await response.json();
         return json.status === 'success' ? json.data : [];
     } catch (error) { return []; }
+};
+
+export const fetchQuotations = async (): Promise<Quotation[]> => {
+    try {
+        const response = await fetch(`${API_URL}?action=getQuotations`, { redirect: 'follow' });
+        const json = await response.json();
+        if (json.status === 'success' && Array.isArray(json.data)) {
+            const groups: Record<string, Quotation> = {};
+            
+            json.data.forEach((row: any) => {
+                const estimateId = String(row['Estimate ID'] || '').trim();
+                if (!estimateId) return;
+
+                if (!groups[estimateId]) {
+                    groups[estimateId] = {
+                        id: estimateId,
+                        estimateId: estimateId,
+                        customerId: String(row['Customer ID'] || ''),
+                        customerName: String(row['Customer Name'] || ''),
+                        date: formatSheetDate(row['Quotation Date'] || row['Date']),
+                        quotationNumber: String(row['Quote Number'] || row['Quotation Number'] || ''),
+                        referenceNumber: String(row['Reference Number'] || ''),
+                        amount: 0,
+                        status: row['Status'] || 'Pending',
+                        expiryDate: formatSheetDate(row['Expiry Date']) || '',
+                        items: []
+                    };
+                }
+
+                const rate = parseFloat(row['Rate']) || 0;
+                const quantity = parseInt(row['Quantity']) || 0;
+                const lineAmount = rate * quantity;
+
+                groups[estimateId].amount += lineAmount;
+                groups[estimateId].items.push({
+                    estimateId: estimateId,
+                    zohoItemId: String(row['Zoho Item ID'] || ''),
+                    sku: String(row['SKU'] || ''),
+                    itemName: String(row['Item Name'] || ''),
+                    rate: rate,
+                    quantity: quantity
+                });
+            });
+
+            return Object.values(groups).sort((a, b) => {
+                const dateA = new Date(a.date).getTime();
+                const dateB = new Date(b.date).getTime();
+                return dateB - dateA;
+            });
+        }
+        return [];
+    } catch (error) { return []; }
+};
+
+export const acceptQuotation = async (quotation: Quotation) => {
+    return await postToScript({ action: 'SEND_AND_ACCEPT_ESTIMATE', ...quotation });
+};
+
+export const refreshQuotationsFromBackend = async () => {
+    return await postToScript({ action: 'FETCH_LAST_14_DAYS_QUOTATIONS' });
 };
 
 export const fetchUsers = async (): Promise<User[]> => {

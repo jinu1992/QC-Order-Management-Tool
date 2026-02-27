@@ -12,6 +12,7 @@ interface AppointmentPassProps {
     unloadingSlot: string;
     purchaseOrderId?: string;
     onClose: () => void;
+    addNotification: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 const AppointmentPass: React.FC<AppointmentPassProps> = ({
@@ -24,14 +25,18 @@ const AppointmentPass: React.FC<AppointmentPassProps> = ({
     purchaseManagerPhone,
     unloadingSlot,
     purchaseOrderId,
-    onClose
+    onClose,
+    addNotification
 }) => {
     const handlePrint = () => {
         const printContent = document.getElementById('appointment-pass-print-content');
         if (!printContent) return;
 
         const printWindow = window.open('', '', 'width=600,height=900');
-        if (!printWindow) return;
+        if (!printWindow) {
+            addNotification("Popup blocked! Please allow popups to print the appointment pass.", "error");
+            return;
+        }
 
         printWindow.document.write(`
             <!DOCTYPE html>

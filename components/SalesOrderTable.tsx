@@ -346,7 +346,7 @@ const FbaShipmentModal: FC<{ so: GroupedSalesOrder, onSave: (id: string) => void
 
 // --- Combined Instamart Label Printing ---
 
-const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> = ({ so, onClose }) => {
+const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void, addNotification: any }> = ({ so, onClose, addNotification }) => {
     const [packingData, setPackingData] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -391,12 +391,15 @@ const InstamartPrintManager: FC<{ so: GroupedSalesOrder, onClose: () => void }> 
         const boxEntries = Object.entries(groupedBoxes) as [string, any[]][];
         const totalBoxes = boxEntries.length;
         if (totalBoxes === 0) {
-            alert("No packing data found for this order ID.");
+            addNotification("No packing data found for this order ID.", "warning");
             return;
         }
         
         const printWindow = window.open('', '_blank');
-        if (!printWindow) return;
+        if (!printWindow) {
+            addNotification("Popup blocked! Please allow popups to print labels.", "error");
+            return;
+        }
 
         const packingDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -630,7 +633,7 @@ const CopyField = ({ label, value, icon }: { label: string, value: string, icon:
     );
 };
 
-const PortalHelperModal: FC<{ so: GroupedSalesOrder, onClose: () => void }> = ({ so, onClose }) => {
+const PortalHelperModal: FC<{ so: GroupedSalesOrder, onClose: () => void, addNotification: any }> = ({ so, onClose, addNotification }) => {
     const [showHelp, setShowHelp] = useState(false);
     const isZepto = so.channel.toLowerCase().includes('zepto');
     const isBlinkit = so.channel.toLowerCase().includes('blinkit');
@@ -639,6 +642,13 @@ const PortalHelperModal: FC<{ so: GroupedSalesOrder, onClose: () => void }> = ({
     const brandColor = isZepto ? 'bg-purple-600' : 'bg-yellow-400';
     const logoText = isZepto ? 'z' : 'b';
     const shadowColor = isZepto ? 'shadow-purple-100' : 'shadow-yellow-100';
+
+    const handleOpenPortal = () => {
+        const win = window.open(portalUrl, '_blank');
+        if (!win) {
+            addNotification("Popup blocked! Please allow popups to open the portal.", "error");
+        }
+    };
 
     const amountWithTax = (so.amount * 1.05).toFixed(0);
     return (
@@ -714,7 +724,7 @@ const PortalHelperModal: FC<{ so: GroupedSalesOrder, onClose: () => void }> = ({
                         <div className="md:col-span-2"><CopyField label="Invoice PDF URL" value={so.invoicePdfUrl || 'N/A'} icon={<ExternalLinkIcon className="h-3 w-3"/>} /></div>
                     </div>
                     <div className="flex flex-col items-center pt-2">
-                        <button onClick={() => window.open(portalUrl, '_blank')} className={`w-full py-4 ${brandColor} text-white font-bold rounded-2xl shadow-xl ${shadowColor} hover:brightness-95 transition-all flex items-center justify-center gap-3 active:scale-95`}><ExternalLinkIcon className="h-5 w-5" /> Open {portalName} Portal</button>
+                        <button onClick={handleOpenPortal} className={`w-full py-4 ${brandColor} text-white font-bold rounded-2xl shadow-xl ${shadowColor} hover:brightness-95 transition-all flex items-center justify-center gap-3 active:scale-95`}><ExternalLinkIcon className="h-5 w-5" /> Open {portalName} Portal</button>
                     </div>
                 </div>
             </div>
@@ -945,17 +955,45 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
     const refreshSingleSOState = async (poReference: string) => {
         setIsRefreshingSo(poReference);
         const poIds = poReference.split(',').map(s => s.trim());
+        let successCount = 0;
+        let failCount = 0;
+        let lastMessage = '';
+
         for (const id of poIds) {
             try {
-                await syncSinglePO(id);
-                const updated = await fetchPurchaseOrder(id);
-                if (updated) {
-                    setPurchaseOrders(prev => prev.map(p => p.poNumber === id ? updated : p));
+                const res = await syncSinglePO(id);
+                if (res.status === 'success') {
+                    const updated = await fetchPurchaseOrder(id);
+                    if (updated) {
+                        setPurchaseOrders(prev => prev.map(p => p.poNumber === id ? updated : p));
+                        successCount++;
+                        lastMessage = res.message;
+                    }
+                } else {
+                    failCount++;
+                    lastMessage = res.message;
                 }
-            } catch (e) {
+            } catch (e: any) {
+                failCount++;
+                lastMessage = e.message || 'Network error';
                 console.error("Failed refresh for SO sub-po", id);
             }
         }
+
+        if (poIds.length === 1) {
+            if (successCount === 1) {
+                addNotification(lastMessage || `Refreshed ${poIds[0]} successfully`, 'success');
+            } else {
+                addNotification(lastMessage || `Failed to refresh ${poIds[0]}`, 'error');
+            }
+        } else {
+            if (successCount > 0) {
+                addNotification(`Refreshed ${successCount} orders. ${failCount > 0 ? `${failCount} failed.` : ''}`, failCount > 0 ? 'warning' : 'success');
+            } else if (failCount > 0) {
+                addNotification(`Failed to refresh orders: ${lastMessage}`, 'error');
+            }
+        }
+        
         setIsRefreshingSo(null);
     };
 
@@ -966,7 +1004,10 @@ const SalesOrderTable: FC<SalesOrderTableProps> = ({ activeFilter, setActiveFilt
 
     const handlePrintFlipkartLabels = (so: GroupedSalesOrder) => {
         const printWindow = window.open('', '_blank');
-        if (!printWindow) return;
+        if (!printWindow) {
+            addNotification("Popup blocked! Please allow popups to print labels.", "error");
+            return;
+        }
 
         const deliveryDate = so.appointmentDate || 'TBD';
         const consignmentId = so.appointmentId || 'N/A';
@@ -1343,8 +1384,20 @@ let html = `
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm">
-            {portalHelper.isOpen && portalHelper.so && <PortalHelperModal so={portalHelper.so} onClose={() => setPortalHelper({ isOpen: false, so: null })} />}
-            {instamartPrintPackModal.isOpen && instamartPrintPackModal.so && <InstamartPrintManager so={instamartPrintPackModal.so} onClose={() => setInstamartPrintPackModal({ isOpen: false, so: null })} />}
+            {portalHelper.isOpen && portalHelper.so && (
+                <PortalHelperModal 
+                    so={portalHelper.so} 
+                    onClose={() => setPortalHelper({ isOpen: false, so: null })} 
+                    addNotification={addNotification}
+                />
+            )}
+            {instamartPrintPackModal.isOpen && instamartPrintPackModal.so && (
+                <InstamartPrintManager 
+                    so={instamartPrintPackModal.so} 
+                    onClose={() => setInstamartPrintPackModal({ isOpen: false, so: null })} 
+                    addNotification={addNotification}
+                />
+            )}
             
             {flipkartConsignmentModal.isOpen && flipkartConsignmentModal.so && (
                 <FlipkartConsignmentModal 
@@ -1393,6 +1446,7 @@ let html = `
                     unloadingSlot={activeAppointmentPass.appointmentRemarks || 'Standard'}
                     purchaseOrderId={activeAppointmentPass.poReference}                 
                     onClose={() => setActiveAppointmentPass(null)}
+                    addNotification={addNotification}
                 />
             )}
             
@@ -1660,7 +1714,7 @@ let html = `
                                                                 </div>
                                                             </div>
                                                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                                                                <div className={`p-4 rounded-xl border transition-all ${so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{so.boxCount || 0}</p></div></div></div>
+                                                                <div className={`p-4 rounded-xl border transition-all ${isFlipkart || so.boxCount > 0 ? 'bg-partners-light-green border-partners-green/20' : 'bg-red-50 border-red-100'}`}><p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Package Detail</p><div className="flex items-center gap-2"><CubeIcon className={`h-5 w-5 ${isFlipkart || so.boxCount > 0 ? 'text-partners-green' : 'text-red-400'}`} /><div><p className="text-sm font-bold text-gray-800">Box Count</p><p className={`text-lg font-black ${isFlipkart || so.boxCount > 0 ? 'text-partners-green' : 'text-red-600'}`}>{isFlipkart ? (so.consignmentQty || 60) : (so.boxCount || 0)}</p></div></div></div>
                                                                 
                                                                 <div className="p-4 bg-partners-light-blue rounded-xl border border-blue-100 flex flex-col">
                                                                     <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-3">{isFlipkart ? 'Consignment Details' : 'Appointment Details'}</p>

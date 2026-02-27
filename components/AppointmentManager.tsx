@@ -70,14 +70,14 @@ const BulkEmailModal: FC<BulkAppointmentModalProps> = ({ channel, pos, channelCo
             const res = await sendAppointmentEmail(params);
             if (res.status === 'success') {
                 addLog('Bulk Email Sent', `Sent appointment request for ${pos.length} POs from ${channel}`);
-                addNotification(`Email sent for ${pos.length} POs to ${channelConfig.appointmentTo}`, 'success');
+                addNotification(res.message || `Email sent for ${pos.length} POs to ${channelConfig.appointmentTo}`, 'success');
                 onSuccess(pos.map(p => p.id));
                 onClose();
             } else {
-                alert("Failed to send email: " + res.message);
+                addNotification("Failed to send email: " + res.message, 'error');
             }
         } catch (e) {
-            alert("Network error sending email");
+            addNotification("Network error sending email", 'error');
         } finally {
             setIsLoading(false);
         }

@@ -32,6 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, currentUse
 
   const allMenuItems: { name: ViewType, icon: React.ReactElement }[] = [
     { name: 'Dashboard', icon: <SummaryIcon /> },
+    { name: 'Quotations', icon: <ClipboardListIcon /> },
     { name: 'Purchase Orders', icon: <ClipboardListIcon /> },
     { name: 'Sales Orders', icon: <TruckIcon /> },
     { name: 'Appointments', icon: <CalendarIcon /> },

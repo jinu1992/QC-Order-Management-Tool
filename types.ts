@@ -1,5 +1,5 @@
 
-export type ViewType = 'Dashboard' | 'Purchase Orders' | 'File Uploader' | 'POC Verification' | 'Appointments' | 'Sales Orders' | 'GRN / POD' | 'Reports' | 'Finance' | 'Inventory' | 'Admin';
+export type ViewType = 'Dashboard' | 'Quotations' | 'Purchase Orders' | 'File Uploader' | 'POC Verification' | 'Appointments' | 'Sales Orders' | 'GRN / POD' | 'Reports' | 'Finance' | 'Inventory' | 'Admin';
 
 export enum POStatus {
     NewPO = 'New',
@@ -141,6 +141,29 @@ export interface PurchaseOrder {
     consignmentQty?: number;
     consignmentProducts?: number;
     consignmentValue?: string;
+}
+
+export interface QuotationItem {
+    estimateId: string;
+    zohoItemId: string;
+    sku: string;
+    itemName: string;
+    rate: number;
+    quantity: number;
+}
+
+export interface Quotation {
+    id: string;
+    estimateId: string;
+    customerId: string;
+    customerName: string;
+    date: string;
+    quotationNumber: string;
+    referenceNumber: string;
+    amount: number;
+    status: string;
+    expiryDate?: string;
+    items: QuotationItem[];
 }
 
 export interface User {

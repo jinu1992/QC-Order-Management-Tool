@@ -12,6 +12,7 @@ interface InventoryManagerProps {
     isSyncing: boolean;
     activeTab: 'mapping' | 'shortfall';
     setActiveTab: (tab: 'mapping' | 'shortfall') => void;
+    addNotification: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 const inputClassName = "mt-1 block w-full rounded-lg border border-gray-300 bg-white text-gray-900 shadow-sm focus:border-partners-green focus:ring-partners-green sm:text-sm py-3 px-3";
@@ -71,7 +72,7 @@ const CreateItemModal = ({ onClose, onSave, uniqueChannels }: { onClose: () => v
     );
 };
 
-const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryItems, purchaseOrders, setInventoryItems, onSync, isSyncing, activeTab, setActiveTab }) => {
+const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryItems, purchaseOrders, setInventoryItems, onSync, isSyncing, activeTab, setActiveTab, addNotification }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedChannel, setSelectedChannel] = useState<string>('All Channels');
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -178,8 +179,11 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
         addLog('Inventory Sync', 'Manual stock sync started...');
         try {
             const result = await syncInventoryFromEasyEcom();
-            if (result.status === 'success') onSync();
-            else alert('Sync failed: ' + result.message);
+            if (result.status === 'success') {
+                onSync();
+                addNotification(result.message || 'Inventory stock sync completed.', 'success');
+            }
+            else addNotification('Sync failed: ' + result.message, 'error');
         } catch (e) { addLog('Sync Error', 'Network failure'); }
         finally { setIsInternalSyncing(false); }
     };
@@ -188,8 +192,16 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
         setShowCreateModal(false);
         try {
             const res = await createInventoryItem(newItem);
-            if (res.status === 'success') onSync();
-        } catch (e) { console.error(e); }
+            if (res.status === 'success') {
+                onSync();
+                addNotification(res.message || 'Mapping created successfully.', 'success');
+            } else {
+                addNotification(res.message || 'Failed to create mapping.', 'error');
+            }
+        } catch (e) { 
+            console.error(e);
+            addNotification('Error creating mapping.', 'error');
+        }
     };
 
     const savePrice = async (item: InventoryItem) => {
@@ -200,8 +212,13 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ addLog, inventoryIt
             const res = await updateInventoryPrice(item.channel, item.articleCode, newPrice);
             if (res.status === 'success') {
                 setInventoryItems(prev => prev.map(i => i.id === item.id ? { ...i, spIncTax: newPrice } : i));
+                addNotification(res.message || 'Price updated successfully.', 'success');
+            } else {
+                addNotification(res.message || 'Failed to update price.', 'error');
             }
-        } catch (e) { alert('Price update failed'); }
+        } catch (e) { 
+            addNotification('Price update failed', 'error');
+        }
     };
 
     const totalLoading = isSyncing || isInternalSyncing;

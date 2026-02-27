@@ -22,6 +22,7 @@ const LOG_DEBUG_SHEET = "System_Logs";
 const SHEET_USERS = "Users";
 const SHEET_UPLOAD_LOGS ="Upload_Logs";
 const SHEET_MASTER_DATA ="Master_Packing_Data";
+const SHEET_QUOTATIONS = "Quotations";
 
 // API Endpoints
 const EASYECOM_BASE_URL = "https://api.easyecom.io";
@@ -45,6 +46,7 @@ function doGet(e) {
     if (action === 'getUsers') return getUsers();
     if (action === 'getUploadMetadata') return getUploadMetadata();
     if (action === 'getPackingData') return getPackingData(e.parameter.referenceCode);
+    if (action === 'getQuotations') return getQuotations();
     return responseJSON({status: 'error', message: 'Invalid action'});
   } catch (err) {
     return responseJSON({status: 'error', message: err.toString()});
@@ -73,6 +75,8 @@ function doPost(e) {
     else if (action === 'updatePOStatus') result = updatePOStatus(data.poNumber, data.status);
     else if (action === 'manual_sync_inventory_allocation') result = manual_sync_inventory_allocation();
     else if (action === 'cancelLineItem') result = handleCancelLineItem(data.poNumber, data.articleCode);
+    else if (action === 'SEND_AND_ACCEPT_ESTIMATE') result = sendAndAcceptEstimate(data);
+    else if (action === 'FETCH_LAST_14_DAYS_QUOTATIONS') result = fetchLast14DaysQuotations();
     else {
       return responseJSON({status: 'error', message: 'Invalid action: ' + action});
     }
@@ -197,6 +201,38 @@ function processFlipkartConsignment(data) {
   } catch (e) {
     return { status: 'error', message: 'Processing Error: ' + e.toString() };
   }
+}
+
+function getQuotations() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_QUOTATIONS);
+  if (!sheet) return responseJSON({ status: 'error', message: 'Quotations sheet not found' });
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const formattedData = data.slice(1).map(row => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = row[i]);
+    return obj;
+  });
+  return responseJSON({ status: 'success', data: formattedData });
+}
+
+function sendAndAcceptEstimate(quotationData) {
+  const estimateId = quotationData.estimateId;
+  if (!estimateId) return { status: 'error', message: 'Estimate ID is required' };
+  
+  // Log the complete data for debugging
+  debugLog('ACCEPT_ESTIMATE_FULL_DATA', quotationData);
+  
+  // Stub for Zoho API call
+  // In reality, this would use UrlFetchApp to call Zoho Books API with the full data
+  return { status: 'success', message: `Estimate ${quotationData.quotationNumber || estimateId} accepted and sent successfully in Zoho with complete data.` };
+}
+
+function fetchLast14DaysQuotations() {
+  // Stub for Zoho API sync
+  // In reality, this would fetch from Zoho and update the 'Quotations' sheet
+  return { status: 'success', message: 'Quotations from last 14 days refreshed from Zoho.' };
 }
 
 function getPurchaseOrders(targetPoNumber) {

@@ -10,14 +10,15 @@ import AdminPanel from './components/AdminPanel';
 import FinanceManager from './components/FinanceManager';
 import InventoryManager from './components/InventoryManager';
 import ReportsManager from './components/ReportsManager';
+import QuotationsManager from './components/QuotationsManager';
 import FileUploader from './components/FileUploader';
 import ToastContainer from './components/ToastContainer';
 import Login from './components/Login';
 import LoadingCube from './components/LoadingCube';
 import { XIcon, QuestionMarkCircleIcon, RefreshIcon } from './components/icons/Icons';
 import { initialRolePermissions } from './data/mockData';
-import { type PurchaseOrder, POStatus, ActivityLog, NotificationItem, ViewType, User, RolePermissions, InventoryItem, ChannelConfig } from './types';
-import { fetchPurchaseOrders, fetchInventoryFromSheet, fetchChannelConfigs, fetchUsers } from './services/api';
+import { type PurchaseOrder, POStatus, ActivityLog, NotificationItem, ViewType, User, RolePermissions, InventoryItem, ChannelConfig, Quotation } from './types';
+import { fetchPurchaseOrders, fetchInventoryFromSheet, fetchChannelConfigs, fetchUsers, fetchQuotations } from './services/api';
 
 const App: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
@@ -37,6 +38,7 @@ const App: React.FC = () => {
   const [adminTab, setAdminTab] = useState<'users' | 'roles' | 'channels' | 'integrations' | 'logs'>('users');
   
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [channelConfigs, setChannelConfigs] = useState<ChannelConfig[]>([]);
 
@@ -86,17 +88,19 @@ const App: React.FC = () => {
 
       setIsLoading(true);
       try {
-          const [poData, invData, channelData, userData] = await Promise.all([
+          const [poData, invData, channelData, userData, quotationData] = await Promise.all([
               fetchPurchaseOrders(),
               fetchInventoryFromSheet(),
               fetchChannelConfigs(),
-              fetchUsers()
+              fetchUsers(),
+              fetchQuotations()
           ]);
 
           if (poData.length > 0) setPurchaseOrders(poData);
           if (invData.length > 0) setInventoryItems(invData);
           if (channelData.length > 0) setChannelConfigs(channelData);
           if (userData.length > 0) setUsers(userData);
+          if (quotationData.length > 0) setQuotations(quotationData);
 
           setLastSynced(Date.now());
       } catch (e) {
@@ -208,6 +212,8 @@ const App: React.FC = () => {
                     </div>
                 </div>
             );
+        case 'Quotations':
+            return <QuotationsManager quotations={quotations} onRefresh={() => refreshData(true)} addNotification={addNotification} />;
         case 'Purchase Orders':
             return (
                 <div className="p-4 sm:p-6 lg:p-8 flex-1">
@@ -216,8 +222,8 @@ const App: React.FC = () => {
             );
         case 'File Uploader':
             return <FileUploader currentUser={currentUser} addLog={addLog} addNotification={addNotification} />;
-        case 'Inventory': return <InventoryManager addLog={addLog} inventoryItems={inventoryItems} purchaseOrders={purchaseOrders} setInventoryItems={setInventoryItems} onSync={() => refreshData(true)} isSyncing={isLoading} activeTab={activeInventoryTab} setActiveTab={setActiveInventoryTab} />;
-        case 'Finance': return <FinanceManager purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} addLog={addLog} />;
+        case 'Inventory': return <InventoryManager addLog={addLog} inventoryItems={inventoryItems} purchaseOrders={purchaseOrders} setInventoryItems={setInventoryItems} onSync={() => refreshData(true)} isSyncing={isLoading} activeTab={activeInventoryTab} setActiveTab={setActiveInventoryTab} addNotification={addNotification} />;
+        case 'Finance': return <FinanceManager purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} addLog={addLog} addNotification={addNotification} />;
         case 'Reports': return <ReportsManager purchaseOrders={purchaseOrders} inventoryItems={inventoryItems} />;
         case 'Appointments':
             return <AppointmentManager purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} addLog={addLog} addNotification={addNotification} />;
@@ -239,7 +245,7 @@ const App: React.FC = () => {
                 </div>
             );
         case 'Admin': return (
-            <AdminPanel logs={logs} users={users} setUsers={setUsers} rolePermissions={rolePermissions} setRolePermissions={() => {}} addLog={addLog} currentUser={currentUser} channelConfigs={channelConfigs} onSync={() => refreshData(true)} activeTab={adminTab} setActiveTab={setAdminTab} />
+            <AdminPanel logs={logs} users={users} setUsers={setUsers} rolePermissions={rolePermissions} setRolePermissions={() => {}} addLog={addLog} currentUser={currentUser} channelConfigs={channelConfigs} onSync={() => refreshData(true)} activeTab={adminTab} setActiveTab={setAdminTab} addNotification={addNotification} />
         );
         default: return <div className="p-8 text-center text-gray-500">Section Under Construction</div>;
     }
